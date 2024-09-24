@@ -18,9 +18,7 @@ type (
 )
 
 func NewKafkaBuilder(conn *kafka.Conn) *KafkaBuilder {
-	return &KafkaBuilder{
-		conn: conn,
-	}
+	return &KafkaBuilder{conn: conn}
 }
 
 func NewTopicConfig(topic string, numPartitions, replicationFactor int) *TopicConfig {

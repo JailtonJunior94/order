@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/jailtonjunior94/outbox/pkg/o11y"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -18,6 +19,7 @@ type (
 	}
 
 	consumer struct {
+		o11y       o11y.Observability
 		brokers    []string
 		topic      string
 		groupID    string
@@ -30,8 +32,8 @@ type (
 	}
 )
 
-func NewConsumer(options ...ConsumerOptions) Consumer {
-	consumer := &consumer{}
+func NewConsumer(o11y o11y.Observability, options ...ConsumerOptions) Consumer {
+	consumer := &consumer{o11y: o11y}
 	for _, opt := range options {
 		opt(consumer)
 	}
@@ -39,6 +41,9 @@ func NewConsumer(options ...ConsumerOptions) Consumer {
 }
 
 func (c *consumer) Consume(ctx context.Context, handler ConsumeHandler) error {
+	ctx, span := c.o11y.Start(ctx, "consumer.Consume")
+	defer span.End()
+
 	go func() {
 		for {
 			msg, err := c.reader.ReadMessage(ctx)
@@ -46,6 +51,12 @@ func (c *consumer) Consume(ctx context.Context, handler ConsumeHandler) error {
 				log.Fatal("failed to read message:", err)
 				continue
 			}
+
+			span.AddAttributes(ctx, o11y.Ok, "producer.Produce",
+				o11y.Attributes{Key: "messaging.system", Value: "kafka"},
+				o11y.Attributes{Key: "messaging.destination", Value: msg.Topic},
+				o11y.Attributes{Key: "messaging.kafka.message_key", Value: string(msg.Key)},
+			)
 
 			if err := c.dispatcher(ctx, msg, handler); err != nil {
 				log.Fatal("failed to dispatch message:", err)
@@ -101,6 +112,7 @@ func WithReader() ConsumerOptions {
 			MinBytes:       10e3,
 			MaxBytes:       10e6,
 			CommitInterval: 0,
+			StartOffset:    kafka.FirstOffset,
 		})
 		consumer.reader = reader
 	}
