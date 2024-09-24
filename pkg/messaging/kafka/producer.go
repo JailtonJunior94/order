@@ -33,7 +33,7 @@ func NewKafkaClient(
 		Topic:    topic,
 		Balancer: &kafka.LeastBytes{},
 	}
-	return &kafkaClient{client: client}
+	return &kafkaClient{o11y: o11y, client: client}
 }
 
 func (k *kafkaClient) Produce(ctx context.Context, topic string, headers map[string]string, message *Message) error {
