@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jailtonjunior94/outbox/internal/order"
 	"github.com/jailtonjunior94/outbox/pkg/bundle"
 	"github.com/jailtonjunior94/outbox/pkg/responses"
 
@@ -67,12 +68,8 @@ func (s *apiServer) Run() {
 		responses.JSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
 	})
 
-	// /* Auth */
-	// user.RegisterAuthModule(ioc, router)
-	// /* User */
-	// user.RegisterUserModule(ioc, router)
-	// /* Category */
-	// category.RegisterCategoryModule(ioc, router)
+	/* Auth */
+	order.RegisterOrderModule(ioc, router)
 
 	/* Graceful shutdown */
 	server := http.Server{
