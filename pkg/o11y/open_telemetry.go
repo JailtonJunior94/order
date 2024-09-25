@@ -203,14 +203,15 @@ func WithTracerProvider(ctx context.Context, endpoint string) Option {
 
 		tracerProvider := sdktrace.NewTracerProvider(
 			sdktrace.WithSyncer(traceExporter),
+			sdktrace.WithBatcher(traceExporter),
 			sdktrace.WithResource(observability.resource),
 		)
 
 		otel.SetTracerProvider(tracerProvider)
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-		observability.tracer = tracerProvider.Tracer(observability.serviceName)
 		observability.tracerProvider = tracerProvider
+		observability.tracer = observability.tracerProvider.Tracer(observability.serviceName)
 	}
 }
 

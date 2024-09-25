@@ -7,6 +7,7 @@ require (
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/spf13/viper v1.19.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.5.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0
 	go.opentelemetry.io/otel v1.30.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.6.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.30.0
@@ -21,6 +22,7 @@ require (
 )
 
 require (
+	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

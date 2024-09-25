@@ -5,8 +5,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/jailtonjunior94/outbox/pkg/o11y"
+	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/cenkalti/backoff/v4"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -19,16 +21,16 @@ type (
 	}
 
 	consumer struct {
-		o11y       o11y.Observability
-		brokers    []string
-		topic      string
-		groupID    string
-		reader     *kafka.Reader
-		handler    ConsumeHandler
 		retries    int
 		maxRetries int
-		retryChan  chan kafka.Message
+		topic      string
+		groupID    string
+		brokers    []string
+		reader     *kafka.Reader
+		handler    ConsumeHandler
 		backoff    backoff.BackOff
+		retryChan  chan kafka.Message
+		o11y       o11y.Observability
 	}
 )
 
@@ -41,9 +43,6 @@ func NewConsumer(o11y o11y.Observability, options ...ConsumerOptions) Consumer {
 }
 
 func (c *consumer) Consume(ctx context.Context, handler ConsumeHandler) error {
-	ctx, span := c.o11y.Start(ctx, "consumer.Consume")
-	defer span.End()
-
 	go func() {
 		for {
 			msg, err := c.reader.ReadMessage(ctx)
@@ -52,11 +51,16 @@ func (c *consumer) Consume(ctx context.Context, handler ConsumeHandler) error {
 				continue
 			}
 
-			span.AddAttributes(ctx, o11y.Ok, "producer.Produce",
-				o11y.Attributes{Key: "messaging.system", Value: "kafka"},
-				o11y.Attributes{Key: "messaging.destination", Value: msg.Topic},
-				o11y.Attributes{Key: "messaging.kafka.message_key", Value: string(msg.Key)},
-			)
+			tracingHeader := map[string][]string{}
+			for _, header := range msg.Headers {
+				if header.Key == "traceID" {
+					tracingHeader["Traceparent"] = []string{string(header.Value)}
+					break
+				}
+			}
+
+			propagator := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+			ctx = propagator.Extract(ctx, propagation.HeaderCarrier(tracingHeader))
 
 			if err := c.dispatcher(ctx, msg, handler); err != nil {
 				log.Fatal("failed to dispatch message:", err)
@@ -125,6 +129,9 @@ func WithHandler(handler ConsumeHandler) ConsumerOptions {
 }
 
 func (c *consumer) dispatcher(ctx context.Context, message kafka.Message, handler ConsumeHandler) error {
+	ctx, span := c.o11y.Start(ctx, "consumer.consume")
+	defer span.End()
+
 	err := handler(ctx, message.Value)
 	if err != nil {
 		c.retries++
