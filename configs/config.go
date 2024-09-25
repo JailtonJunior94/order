@@ -6,12 +6,40 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Config struct {
-	ServiceName          string   `mapstructure:"SERVICE_NAME"`
-	KafkaBrokers         []string `mapstructure:"KAFKA_BROKERS"`
-	OtelExporterEndpoint string   `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
-	KafkaFinacialTopics  []string `mapstructure:"KAFKA_FINACIAL_TOPICS"`
-}
+type (
+	Config struct {
+		DBConfig    DBConfig    `mapstructure:",squash"`
+		HTTPConfig  HTTPConfig  `mapstructure:",squash"`
+		O11yConfig  O11yConfig  `mapstructure:",squash"`
+		KafkaConfig KafkaConfig `mapstructure:",squash"`
+	}
+
+	DBConfig struct {
+		Driver         string `mapstructure:"DB_DRIVER"`
+		Host           string `mapstructure:"DB_HOST"`
+		Port           string `mapstructure:"DB_PORT"`
+		User           string `mapstructure:"DB_USER"`
+		Password       string `mapstructure:"DB_PASSWORD"`
+		Name           string `mapstructure:"DB_NAME"`
+		DBMaxIdleConns int    `mapstructure:"DB_MAX_IDLE_CONNS"`
+		MigratePath    string `mapstructure:"MIGRATE_PATH"`
+	}
+
+	HTTPConfig struct {
+		HTTPPort string `mapstructure:"HTTP_PORT"`
+	}
+
+	O11yConfig struct {
+		ServiceName      string `mapstructure:"SERVICE_NAME"`
+		ServiceVersion   string `mapstructure:"SERVICE_VERSION"`
+		ExporterEndpoint string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	}
+
+	KafkaConfig struct {
+		Brokers      []string `mapstructure:"KAFKA_BROKERS"`
+		OrdersTopics []string `mapstructure:"KAFKA_ORDERS_TOPICS"`
+	}
+)
 
 func LoadConfig(path string) (*Config, error) {
 	var cfg *Config
@@ -20,6 +48,7 @@ func LoadConfig(path string) (*Config, error) {
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
 	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -32,11 +61,11 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	if brokers := viper.GetString("KAFKA_BROKERS"); brokers != "" {
-		cfg.KafkaBrokers = strings.Split(brokers, ",")
+		cfg.KafkaConfig.Brokers = strings.Split(brokers, ",")
 	}
 
-	if financialTopics := viper.GetString("KAFKA_FINACIAL_TOPICS"); financialTopics != "" {
-		cfg.KafkaFinacialTopics = strings.Split(financialTopics, ",")
+	if financialTopics := viper.GetString("KAFKA_ORDERS_TOPICS"); financialTopics != "" {
+		cfg.KafkaConfig.OrdersTopics = strings.Split(financialTopics, ",")
 	}
 
 	return cfg, nil

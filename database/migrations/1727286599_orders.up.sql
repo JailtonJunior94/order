@@ -1,0 +1,21 @@
+CREATE TABLE orders (
+    id UUID NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT pk_orders PRIMARY KEY (id)
+);
+
+CREATE TABLE order_items (
+    id UUID NOT NULL,
+    order_id UUID NOT NULL,
+    product_name VARCHAR(50) NOT NULL,
+    quantity INT NOT NULL,
+    price NUMERIC(10, 2) NOT NULL
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT pk_order_items PRIMARY KEY (id),
+    CONSTRAINT fk_order_items_orders FOREIGN KEY (order_id) REFERENCES orders(id)
+);
