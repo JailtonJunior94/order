@@ -1,4 +1,17 @@
-package main
+package consumer
+
+import "log"
+
+type consumer struct {
+}
+
+func NewConsumer() *consumer {
+	return &consumer{}
+}
+
+func (c *consumer) Run() {
+	log.Println("not implement")
+}
 
 // import (
 // 	"context"

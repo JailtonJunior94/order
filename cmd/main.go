@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/jailtonjunior94/outbox/cmd/consumer"
+	"github.com/jailtonjunior94/outbox/cmd/server"
+	"github.com/jailtonjunior94/outbox/cmd/worker"
 	"github.com/jailtonjunior94/outbox/pkg/bundle"
 	migration "github.com/jailtonjunior94/outbox/pkg/database/migrate"
 
@@ -31,11 +34,11 @@ func main() {
 		},
 	}
 
-	api := &cobra.Command{
+	server := &cobra.Command{
 		Use:   "api",
 		Short: "Outbox API",
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Println("not implement")
+			server.NewApiServer().Run()
 		},
 	}
 
@@ -43,7 +46,7 @@ func main() {
 		Use:   "consumers",
 		Short: "Outbox Consumers",
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Println("not implement")
+			consumer.NewConsumer().Run()
 		},
 	}
 
@@ -51,10 +54,10 @@ func main() {
 		Use:   "workers",
 		Short: "Outbox Workers",
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Println("not implement")
+			worker.NewWorkers().Run()
 		},
 	}
 
-	root.AddCommand(migrate, api, consumers, workers)
+	root.AddCommand(migrate, server, consumers, workers)
 	root.Execute()
 }

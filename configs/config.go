@@ -26,7 +26,7 @@ type (
 	}
 
 	HTTPConfig struct {
-		HTTPPort string `mapstructure:"HTTP_PORT"`
+		Port string `mapstructure:"HTTP_PORT"`
 	}
 
 	O11yConfig struct {

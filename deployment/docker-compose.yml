@@ -104,3 +104,24 @@ services:
     ports:
       - "16686:16686"
       - "14250:14250"
+
+  outbox_migration:
+    container_name: outbox_migration
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: migrate
+    environment:
+      - DB_DRIVER=postgres
+      - DB_HOST=cockroachdb
+      - DB_PORT=26257
+      - DB_USER=root
+      - DB_PASSWORD=outbox@password
+      - DB_NAME=outbox
+      - DB_MAX_IDLE_CONNS=10
+      - MIGRATE_PATH=file://migrations/outbox
+    depends_on:
+      - cockroachdb
+
+volumes:
+  cockroachdb_data:
