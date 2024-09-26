@@ -50,7 +50,6 @@
       {
          "name":"Start All",
          "configurations":[
-            "[Debug] Migrate",
             "[Debug] API",
             "[Debug] Consumers",
             "[Debug] Workers"

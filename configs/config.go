@@ -37,8 +37,12 @@ type (
 	}
 
 	KafkaConfig struct {
-		Brokers      []string `mapstructure:"KAFKA_BROKERS"`
-		OrdersTopics []string `mapstructure:"KAFKA_ORDERS_TOPICS"`
+		Brokers                []string `mapstructure:"KAFKA_BROKERS"`
+		Order                  string   `mapstructure:"KAFKA_ORDER_TOPIC"`
+		OrderPartitions        int      `mapstructure:"KAFKA_ORDER_NUM_PARTITIONS"`
+		OrderReplicationFactor int      `mapstructure:"KAFKA_ORDER_REPLICATION_FACTOR"`
+		OrderDLQ               string   `mapstructure:"KAFKA_ORDER_DLQ_TOPIC"`
+		OrderGroupID           string   `mapstructure:"KAFKA_ORDER_GROUP_ID"`
 	}
 
 	WorkerConfig struct {
@@ -67,10 +71,6 @@ func LoadConfig(path string) (*Config, error) {
 
 	if brokers := viper.GetString("KAFKA_BROKERS"); brokers != "" {
 		config.KafkaConfig.Brokers = strings.Split(brokers, ",")
-	}
-
-	if financialTopics := viper.GetString("KAFKA_ORDERS_TOPICS"); financialTopics != "" {
-		config.KafkaConfig.OrdersTopics = strings.Split(financialTopics, ",")
 	}
 
 	return config, nil

@@ -68,7 +68,7 @@ func (s *apiServer) Run() {
 		responses.JSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
 	})
 
-	/* Auth */
+	/* Order */
 	order.RegisterOrderModule(ioc, router)
 
 	/* Graceful shutdown */

@@ -6,8 +6,9 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
+	"github.com/jailtonjunior94/order/internal/order/domain/vos"
 	"github.com/jailtonjunior94/order/pkg/o11y"
-	"github.com/jailtonjunior94/order/pkg/vos"
+	sharedVos "github.com/jailtonjunior94/order/pkg/vos"
 )
 
 type orderRepository struct {
@@ -24,7 +25,46 @@ func NewOrderRepository(db *sql.DB, tx *sql.Tx, o11y o11y.Observability) interfa
 	}
 }
 
-func (r *orderRepository) Find(ctx context.Context, orderID vos.UUID) (*entities.Order, error) {
+func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*entities.Order, error) {
+	ctx, span := r.o11y.Start(ctx, "order_repository.find_all")
+	defer span.End()
+
+	query := `select 
+				id,
+				status,
+				created_at,
+				updated_at
+			  from
+				orders
+			  where
+				status = $1`
+
+	rows, err := r.tx.QueryContext(ctx, query, status.String())
+	if err != nil {
+		span.AddAttributes(ctx, o11y.Error, "error find all orders", o11y.Attributes{Key: "error", Value: err})
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []*entities.Order
+	for rows.Next() {
+		var order entities.Order
+		err := rows.Scan(
+			&order.ID.Value,
+			&order.Status,
+			&order.CreatedAt,
+			&order.UpdatedAt.Time,
+		)
+		if err != nil {
+			span.AddAttributes(ctx, o11y.Error, "error scan row", o11y.Attributes{Key: "error", Value: err})
+			return nil, err
+		}
+		orders = append(orders, &order)
+	}
+	return orders, nil
+}
+
+func (r *orderRepository) Find(ctx context.Context, orderID sharedVos.UUID) (*entities.Order, error) {
 	ctx, span := r.o11y.Start(ctx, "order_repository.find")
 	defer span.End()
 

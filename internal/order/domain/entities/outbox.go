@@ -32,7 +32,8 @@ func NewOutbox(id vos.UUID, eventName string, payload any) (*Outbox, error) {
 	}, nil
 }
 
-func (o *Outbox) MarkAsPublished() {
+func (o *Outbox) MarkAsPublished() *Outbox {
 	o.WasPublished = true
 	o.PublishedAt = vos.NewNullableTime(time.Now().UTC())
+	return o
 }

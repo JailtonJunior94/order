@@ -32,3 +32,11 @@ func (o *Order) MarkAsPaid() *Order {
 func (o *Order) AddItems(items []*OrderItem) {
 	o.Items = items
 }
+
+func (o *Order) Total() float64 {
+	var total float64
+	for _, item := range o.Items {
+		total += item.Price * float64(item.Quantity)
+	}
+	return total
+}

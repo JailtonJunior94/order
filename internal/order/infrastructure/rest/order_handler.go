@@ -32,7 +32,7 @@ func NewUserHandler(
 }
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.o11y.Tracer().Start(r.Context(), "order_handler.create")
+	ctx, span := h.o11y.Start(r.Context(), "order_handler.create")
 	defer span.End()
 
 	var input *dtos.OrderInput
@@ -53,7 +53,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) MarkAsPaid(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.o11y.Tracer().Start(r.Context(), "order_handler.mark_as_paid")
+	ctx, span := h.o11y.Start(r.Context(), "order_handler.mark_as_paid")
 	defer span.End()
 
 	orderIDParam := chi.URLParam(r, "id")

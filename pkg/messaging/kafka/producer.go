@@ -26,12 +26,10 @@ type (
 )
 
 func NewKafkaClient(
-	o11y o11y.Observability,
 	broker string,
-	topic string,
+	o11y o11y.Observability,
 ) KafkaClient {
 	client := &kafka.Writer{
-		Topic:    topic,
 		Addr:     kafka.TCP(broker),
 		Balancer: &kafka.LeastBytes{},
 	}
@@ -43,6 +41,7 @@ func (k *kafkaClient) Produce(ctx context.Context, topic string, headers map[str
 	defer span.End()
 
 	messageKafka := kafka.Message{
+		Topic: topic,
 		Key:   message.Key,
 		Value: message.Value,
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/jailtonjunior94/order/internal/order"
 	"github.com/jailtonjunior94/order/pkg/bundle"
 
 	"github.com/robfig/cron/v3"
@@ -42,15 +43,15 @@ func (w *worker) Run() {
 		}
 	}()
 
-	c := cron.New()
+	/* Order */
+	publishEventHandler := order.RegisterPublishEventHandler(ioc)
 
-	_, err := c.AddFunc(ioc.Config.WorkerConfig.CronExpression, func() {
-		// Do something
-		log.Println("Running...")
-	})
+	jobs := cron.New()
+
+	_, err := jobs.AddFunc(ioc.Config.WorkerConfig.CronExpression, publishEventHandler.Handle)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	c.Run()
+	jobs.Run()
 }
