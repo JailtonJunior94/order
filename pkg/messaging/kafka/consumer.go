@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/jailtonjunior94/outbox/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/cenkalti/backoff/v4"

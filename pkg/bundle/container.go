@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/jailtonjunior94/outbox/configs"
-	"github.com/jailtonjunior94/outbox/pkg/database/postgres"
-	"github.com/jailtonjunior94/outbox/pkg/o11y"
+	"github.com/jailtonjunior94/order/configs"
+	"github.com/jailtonjunior94/order/pkg/database/postgres"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 type Container struct {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/jailtonjunior94/outbox/internal/order/domain/entities"
-	"github.com/jailtonjunior94/outbox/internal/order/domain/interfaces"
-	"github.com/jailtonjunior94/outbox/pkg/o11y"
+	"github.com/jailtonjunior94/order/internal/order/domain/entities"
+	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 type orderRepository struct {

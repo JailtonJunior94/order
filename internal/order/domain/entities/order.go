@@ -3,9 +3,9 @@ package entities
 import (
 	"time"
 
-	"github.com/jailtonjunior94/outbox/internal/order/domain/vos"
-	"github.com/jailtonjunior94/outbox/pkg/entity"
-	sharedVos "github.com/jailtonjunior94/outbox/pkg/vos"
+	"github.com/jailtonjunior94/order/internal/order/domain/vos"
+	"github.com/jailtonjunior94/order/pkg/entity"
+	sharedVos "github.com/jailtonjunior94/order/pkg/vos"
 )
 
 type Order struct {

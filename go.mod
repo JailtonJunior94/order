@@ -1,6 +1,6 @@
-module github.com/jailtonjunior94/outbox
+module github.com/jailtonjunior94/order
 
-go 1.23
+go 1.23.1
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.5.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.55.0
 	go.opentelemetry.io/otel v1.30.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.6.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.30.0

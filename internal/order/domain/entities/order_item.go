@@ -3,8 +3,8 @@ package entities
 import (
 	"time"
 
-	"github.com/jailtonjunior94/outbox/pkg/entity"
-	"github.com/jailtonjunior94/outbox/pkg/vos"
+	"github.com/jailtonjunior94/order/pkg/entity"
+	"github.com/jailtonjunior94/order/pkg/vos"
 )
 
 type OrderItem struct {

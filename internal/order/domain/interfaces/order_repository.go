@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/jailtonjunior94/outbox/internal/order/domain/entities"
+	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 )
 
 type OrderRepository interface {

@@ -30,8 +30,8 @@ type (
 	}
 
 	O11yConfig struct {
-		ServiceName      string `mapstructure:"SERVICE_NAME"`
-		ServiceVersion   string `mapstructure:"SERVICE_VERSION"`
+		ServiceName      string `mapstructure:"OTEL_SERVICE_NAME"`
+		ServiceVersion   string `mapstructure:"OTEL_SERVICE_VERSION"`
 		ExporterEndpoint string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 	}
 
@@ -42,7 +42,7 @@ type (
 )
 
 func LoadConfig(path string) (*Config, error) {
-	var cfg *Config
+	var config *Config
 
 	viper.AddConfigPath(path)
 	viper.SetConfigName(".env")
@@ -55,18 +55,18 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	err = viper.Unmarshal(&cfg)
+	err = viper.Unmarshal(&config)
 	if err != nil {
 		return nil, err
 	}
 
 	if brokers := viper.GetString("KAFKA_BROKERS"); brokers != "" {
-		cfg.KafkaConfig.Brokers = strings.Split(brokers, ",")
+		config.KafkaConfig.Brokers = strings.Split(brokers, ",")
 	}
 
 	if financialTopics := viper.GetString("KAFKA_ORDERS_TOPICS"); financialTopics != "" {
-		cfg.KafkaConfig.OrdersTopics = strings.Split(financialTopics, ",")
+		config.KafkaConfig.OrdersTopics = strings.Split(financialTopics, ",")
 	}
 
-	return cfg, nil
+	return config, nil
 }

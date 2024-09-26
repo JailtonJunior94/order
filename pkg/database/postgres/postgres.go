@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jailtonjunior94/outbox/configs"
+	"github.com/jailtonjunior94/order/configs"
 
 	_ "github.com/lib/pq"
 )

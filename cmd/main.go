@@ -4,11 +4,11 @@ import (
 	"context"
 	"log"
 
-	"github.com/jailtonjunior94/outbox/cmd/consumer"
-	"github.com/jailtonjunior94/outbox/cmd/server"
-	"github.com/jailtonjunior94/outbox/cmd/worker"
-	"github.com/jailtonjunior94/outbox/pkg/bundle"
-	migration "github.com/jailtonjunior94/outbox/pkg/database/migrate"
+	"github.com/jailtonjunior94/order/cmd/consumer"
+	"github.com/jailtonjunior94/order/cmd/server"
+	"github.com/jailtonjunior94/order/cmd/worker"
+	"github.com/jailtonjunior94/order/pkg/bundle"
+	migration "github.com/jailtonjunior94/order/pkg/database/migrate"
 
 	"github.com/spf13/cobra"
 )

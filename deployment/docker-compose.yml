@@ -1,9 +1,8 @@
 services:
   cockroachdb:
-    restart: always
-    container_name: cockroachdb
     image: cockroachdb/cockroach:v23.2.4
     command: start-single-node --insecure
+    restart: always
     ports:
       - "26257:26257"
       - "8080:8080"
@@ -16,20 +15,18 @@ services:
     volumes:
       - ./cockroachdb_data:/cockroach/cockroach-data
     environment:
-      COCKROACH_DATABASE: outbox
+      COCKROACH_DATABASE: orders
       COCKROACH_USER: root
-      COCKROACH_PASSWORD: outbox@password
+      COCKROACH_PASSWORD: order@password
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.7.1
-    container_name: messaging-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
   broker:
     image: confluentinc/cp-kafka:7.7.1
-    container_name: messaging-broker
     ports:
       - "9092:9092"
     depends_on:
@@ -45,7 +42,6 @@ services:
 
   kafka_ui:
     image: provectuslabs/kafka-ui:v0.7.2
-    container_name: messaging-kafka-ui
     ports:
       - 8085:8080
     depends_on:
@@ -57,7 +53,6 @@ services:
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
   otel_collector:
-    container_name: observability-otel-collector
     image: otel/opentelemetry-collector-contrib:0.82.0
     restart: always
     command:
@@ -80,7 +75,6 @@ services:
       - jaeger
 
   prometheus:
-    container_name: observability-prometheus
     image: prom/prometheus:v2.51.2
     restart: always
     command:
@@ -91,7 +85,6 @@ services:
       - "9090:9090"
 
   grafana:
-    container_name: observability-grafana
     image: grafana/grafana:10.4.2
     volumes:
       - ./observability/grafana/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
@@ -99,14 +92,13 @@ services:
       - "3000:3000"
 
   jaeger:
-    container_name: observability-jaeger
+    container_name: orders-jaeger
     image: jaegertracing/all-in-one:1
     ports:
       - "16686:16686"
       - "14250:14250"
 
-  outbox_migration:
-    container_name: outbox_migration
+  order_migration:
     build:
       context: ..
       dockerfile: deployment/Dockerfile
@@ -116,10 +108,10 @@ services:
       - DB_HOST=cockroachdb
       - DB_PORT=26257
       - DB_USER=root
-      - DB_PASSWORD=outbox@password
-      - DB_NAME=outbox
+      - DB_PASSWORD=order@password
+      - DB_NAME=orders
       - DB_MAX_IDLE_CONNS=10
-      - MIGRATE_PATH=file://migrations/outbox
+      - MIGRATE_PATH=file://migrations/order
     depends_on:
       - cockroachdb
 

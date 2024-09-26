@@ -1,9 +1,9 @@
 package factories
 
 import (
-	"github.com/jailtonjunior94/outbox/internal/order/domain/dtos"
-	"github.com/jailtonjunior94/outbox/internal/order/domain/entities"
-	"github.com/jailtonjunior94/outbox/pkg/vos"
+	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
+	"github.com/jailtonjunior94/order/internal/order/domain/entities"
+	"github.com/jailtonjunior94/order/pkg/vos"
 )
 
 func CreateOrder(input *dtos.OrderInput) (*entities.Order, error) {

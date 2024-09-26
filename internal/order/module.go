@@ -3,11 +3,11 @@ package order
 import (
 	"database/sql"
 
-	"github.com/jailtonjunior94/outbox/internal/order/infrastructure/repositories"
-	"github.com/jailtonjunior94/outbox/internal/order/infrastructure/rest"
-	"github.com/jailtonjunior94/outbox/internal/order/usecase"
-	"github.com/jailtonjunior94/outbox/pkg/bundle"
-	unitOfWork "github.com/jailtonjunior94/outbox/pkg/database/uow"
+	"github.com/jailtonjunior94/order/internal/order/infrastructure/repositories"
+	"github.com/jailtonjunior94/order/internal/order/infrastructure/rest"
+	"github.com/jailtonjunior94/order/internal/order/usecase"
+	"github.com/jailtonjunior94/order/pkg/bundle"
+	unitOfWork "github.com/jailtonjunior94/order/pkg/database/uow"
 
 	"github.com/go-chi/chi/v5"
 )

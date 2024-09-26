@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jailtonjunior94/outbox/internal/order"
-	"github.com/jailtonjunior94/outbox/pkg/bundle"
-	"github.com/jailtonjunior94/outbox/pkg/responses"
+	"github.com/jailtonjunior94/order/internal/order"
+	"github.com/jailtonjunior94/order/pkg/bundle"
+	"github.com/jailtonjunior94/order/pkg/responses"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"

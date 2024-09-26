@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jailtonjunior94/outbox/internal/order/domain/dtos"
-	"github.com/jailtonjunior94/outbox/internal/order/domain/factories"
-	"github.com/jailtonjunior94/outbox/internal/order/domain/interfaces"
-	"github.com/jailtonjunior94/outbox/pkg/database/uow"
-	"github.com/jailtonjunior94/outbox/pkg/o11y"
+	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
+	"github.com/jailtonjunior94/order/internal/order/domain/factories"
+	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
+	"github.com/jailtonjunior94/order/pkg/database/uow"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 const (

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/jailtonjunior94/outbox/internal/order/domain/dtos"
-	"github.com/jailtonjunior94/outbox/internal/order/usecase"
-	"github.com/jailtonjunior94/outbox/pkg/o11y"
-	"github.com/jailtonjunior94/outbox/pkg/responses"
+	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
+	"github.com/jailtonjunior94/order/internal/order/usecase"
+	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/responses"
 )
 
 type UserHandler struct {

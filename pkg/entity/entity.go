@@ -3,7 +3,7 @@ package entity
 import (
 	"time"
 
-	"github.com/jailtonjunior94/outbox/pkg/vos"
+	"github.com/jailtonjunior94/order/pkg/vos"
 )
 
 type Base struct {
