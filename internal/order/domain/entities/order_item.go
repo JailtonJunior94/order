@@ -1,6 +1,8 @@
 package entities
 
 import (
+	"time"
+
 	"github.com/jailtonjunior94/outbox/pkg/entity"
 	"github.com/jailtonjunior94/outbox/pkg/vos"
 )
@@ -19,5 +21,8 @@ func NewOrderItem(orderID vos.UUID, productName string, price float64, quantity 
 		ProductName: productName,
 		Price:       price,
 		Quantity:    quantity,
+		Base: entity.Base{
+			CreatedAt: time.Now().UTC(),
+		},
 	}
 }

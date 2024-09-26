@@ -28,18 +28,17 @@ func (r *orderRepository) Insert(ctx context.Context, order *entities.Order) err
 	defer span.End()
 
 	query := `INSERT INTO
-				orders (id, status, created_at, updated_at, deleted_at)
+				orders (id, status, created_at, updated_at)
 			  VALUES
-				($1, $2, $3, $4, $5)`
+				($1, $2, $3, $4)`
 
-	_, err := r.db.ExecContext(
+	_, err := r.tx.ExecContext(
 		ctx,
 		query,
-		order.ID,
-		order.Status,
+		order.ID.Value,
+		order.Status.String(),
 		order.CreatedAt,
-		order.UpdatedAt,
-		order.DeletedAt,
+		order.UpdatedAt.Time,
 	)
 	if err != nil {
 		span.AddAttributes(ctx, o11y.Error, "error insert order", o11y.Attributes{Key: "error", Value: err})
@@ -56,28 +55,26 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 				order_items (
 					id,
 					order_id,
-					product_id,
+					product_name,
 					quantity,
 					price,
 					created_at,
-					updated_at,
-					deleted_at
+					updated_at
 					)
 				VALUES
-					($1, $2,$3, $4, $5, $6, $7, $8)`
+					($1, $2, $3, $4, $5, $6, $7)`
 
 	for _, item := range items {
-		_, err := r.db.ExecContext(
+		_, err := r.tx.ExecContext(
 			ctx,
 			query,
-			item.ID,
-			item.OrderID,
+			item.ID.Value,
+			item.OrderID.Value,
 			item.ProductName,
 			item.Quantity,
 			item.Price,
 			item.CreatedAt,
-			item.UpdatedAt,
-			item.DeletedAt,
+			item.UpdatedAt.Time,
 		)
 		if err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error insert order item", o11y.Attributes{Key: "error", Value: err})

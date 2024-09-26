@@ -17,6 +17,9 @@ type Order struct {
 func NewOrder() *Order {
 	return &Order{
 		Status: vos.StatusPending,
+		Base: entity.Base{
+			CreatedAt: time.Now().UTC(),
+		},
 	}
 }
 
