@@ -17,7 +17,22 @@ func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 	uow.Register("OrderRepository", func(tx *sql.Tx) unitOfWork.Repository {
 		return repositories.NewOrderRepository(ioc.DB, tx, ioc.Observability)
 	})
+
+	uow.Register("OutboxRepository", func(tx *sql.Tx) unitOfWork.Repository {
+		return repositories.NewOutboxRepository(ioc.DB, tx, ioc.Observability)
+	})
+
 	createOrderUseCase := usecase.NewCreateOrderUseCase(uow, ioc.Observability)
-	orderHandler := rest.NewUserHandler(ioc.Observability, createOrderUseCase)
-	rest.NewOrderRoute(router, rest.WithCreateOrderHandler(orderHandler.Create))
+	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(uow, ioc.Observability)
+
+	orderHandler := rest.NewUserHandler(
+		ioc.Observability,
+		createOrderUseCase,
+		markAsPaidUseCaseUseCase,
+	)
+
+	rest.NewOrderRoute(router,
+		rest.WithCreateOrderHandler(orderHandler.Create),
+		rest.WithMarkAsPaidHandler(orderHandler.MarkAsPaid),
+	)
 }

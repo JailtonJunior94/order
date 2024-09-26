@@ -23,9 +23,10 @@ func NewOrder() *Order {
 	}
 }
 
-func (o *Order) MarkAsPaid() {
+func (o *Order) MarkAsPaid() *Order {
 	o.Status = vos.StatusPaid
 	o.UpdatedAt = sharedVos.NewNullableTime(time.Now().UTC())
+	return o
 }
 
 func (o *Order) AddItems(items []*OrderItem) {

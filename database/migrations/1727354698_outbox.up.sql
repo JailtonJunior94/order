@@ -1,0 +1,10 @@
+CREATE TABLE outbox (
+    id UUID NOT NULL,
+    event_name VARCHAR(50) NOT NULL,
+    was_published BOOLEAN NOT NULL DEFAULT FALSE,
+    published_at TIMESTAMP NULL DEFAULT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT pk_outbox PRIMARY KEY (id)
+);

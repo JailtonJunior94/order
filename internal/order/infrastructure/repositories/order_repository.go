@@ -7,6 +7,7 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/vos"
 )
 
 type orderRepository struct {
@@ -23,13 +24,46 @@ func NewOrderRepository(db *sql.DB, tx *sql.Tx, o11y o11y.Observability) interfa
 	}
 }
 
+func (r *orderRepository) Find(ctx context.Context, orderID vos.UUID) (*entities.Order, error) {
+	ctx, span := r.o11y.Start(ctx, "order_repository.find")
+	defer span.End()
+
+	query := `select
+				id,
+				status,
+				created_at,
+				updated_at
+			  from
+				orders
+			  where
+				id = $1`
+
+	var order entities.Order
+	err := r.tx.QueryRowContext(ctx, query, orderID.String()).Scan(
+		&order.ID.Value,
+		&order.Status,
+		&order.CreatedAt,
+		&order.UpdatedAt.Time,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			span.AddAttributes(ctx, o11y.Ok, "order found", o11y.Attributes{Key: "order_id", Value: orderID.String()})
+			return nil, nil
+		}
+		span.AddAttributes(ctx, o11y.Error, "error find order", o11y.Attributes{Key: "order_id", Value: orderID.String()})
+		return nil, err
+	}
+	return &order, nil
+}
+
 func (r *orderRepository) Insert(ctx context.Context, order *entities.Order) error {
 	ctx, span := r.o11y.Start(ctx, "order_repository.insert")
 	defer span.End()
 
-	query := `INSERT INTO
+	query := `insert into
 				orders (id, status, created_at, updated_at)
-			  VALUES
+			  values
 				($1, $2, $3, $4)`
 
 	_, err := r.tx.ExecContext(
@@ -51,7 +85,7 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 	ctx, span := r.o11y.Start(ctx, "order_repository.insert_items")
 	defer span.End()
 
-	query := `INSERT INTO
+	query := `insert into
 				order_items (
 					id,
 					order_id,
@@ -61,7 +95,7 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 					created_at,
 					updated_at
 					)
-				VALUES
+				values
 					($1, $2, $3, $4, $5, $6, $7)`
 
 	for _, item := range items {
@@ -82,5 +116,31 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 		}
 	}
 
+	return nil
+}
+
+func (r *orderRepository) Update(ctx context.Context, order *entities.Order) error {
+	ctx, span := r.o11y.Start(ctx, "order_repository.update")
+	defer span.End()
+
+	query := `update
+				orders
+			  set
+				status = $1,
+				updated_at = $2
+			  where
+				id = $3`
+
+	_, err := r.tx.ExecContext(
+		ctx,
+		query,
+		order.Status.String(),
+		order.UpdatedAt.Time,
+		order.ID.Value,
+	)
+	if err != nil {
+		span.AddAttributes(ctx, o11y.Error, "error update order", o11y.Attributes{Key: "error", Value: err})
+		return err
+	}
 	return nil
 }
