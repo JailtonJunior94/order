@@ -8,10 +8,11 @@ import (
 
 type (
 	Config struct {
-		DBConfig    DBConfig    `mapstructure:",squash"`
-		HTTPConfig  HTTPConfig  `mapstructure:",squash"`
-		O11yConfig  O11yConfig  `mapstructure:",squash"`
-		KafkaConfig KafkaConfig `mapstructure:",squash"`
+		DBConfig     DBConfig     `mapstructure:",squash"`
+		HTTPConfig   HTTPConfig   `mapstructure:",squash"`
+		O11yConfig   O11yConfig   `mapstructure:",squash"`
+		KafkaConfig  KafkaConfig  `mapstructure:",squash"`
+		WorkerConfig WorkerConfig `mapstructure:",squash"`
 	}
 
 	DBConfig struct {
@@ -38,6 +39,10 @@ type (
 	KafkaConfig struct {
 		Brokers      []string `mapstructure:"KAFKA_BROKERS"`
 		OrdersTopics []string `mapstructure:"KAFKA_ORDERS_TOPICS"`
+	}
+
+	WorkerConfig struct {
+		CronExpression string `mapstructure:"WORKER_CRON"`
 	}
 )
 
