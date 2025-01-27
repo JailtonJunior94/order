@@ -50,8 +50,8 @@
       {
          "name":"Start All",
          "configurations":[
-            "[Debug] API",
             "[Debug] Consumers",
+            "[Debug] API",
             "[Debug] Workers"
          ]
       }

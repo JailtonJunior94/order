@@ -23,6 +23,10 @@ exporters:
   #     default_log_name: "otel"
   #     endpoint: "logging.googleapis.com:443"
 
+  datadog:
+    api:
+      key: "fa3a7e2539485af867b7c0f3e8fc6640"
+
   jaeger:
     endpoint: "jaeger:14250"
     tls:
@@ -39,12 +43,12 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheus]
+      exporters: [prometheus, datadog]
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger]
-    # logs:
-    #   receivers: [otlp]
-    #   processors: [batch]
-    #   exporters: [googlecloud]
+      exporters: [jaeger, datadog]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [datadog]
