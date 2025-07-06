@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/jailtonjunior94/order/internal/order/usecase"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type PublishEventHandler struct {

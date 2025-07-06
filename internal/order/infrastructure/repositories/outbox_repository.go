@@ -6,7 +6,8 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type outboxRepository struct {

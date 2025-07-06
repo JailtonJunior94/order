@@ -7,8 +7,9 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/internal/order/domain/vos"
-	"github.com/jailtonjunior94/order/pkg/o11y"
 	sharedVos "github.com/jailtonjunior94/order/pkg/vos"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type orderRepository struct {

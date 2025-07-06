@@ -6,9 +6,11 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
 	"github.com/jailtonjunior94/order/internal/order/usecase"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+
 	"github.com/jailtonjunior94/order/pkg/responses"
 	"github.com/jailtonjunior94/order/pkg/vos"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 
 	"github.com/go-chi/chi/v5"
 )

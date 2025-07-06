@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 
-	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/propagation"

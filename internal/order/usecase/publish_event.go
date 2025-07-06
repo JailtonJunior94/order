@@ -6,7 +6,8 @@ import (
 	"github.com/jailtonjunior94/order/configs"
 	"github.com/jailtonjunior94/order/pkg/database/uow"
 	"github.com/jailtonjunior94/order/pkg/messaging/kafka"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type (

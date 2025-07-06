@@ -7,8 +7,9 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/events"
 	"github.com/jailtonjunior94/order/pkg/database/uow"
-	"github.com/jailtonjunior94/order/pkg/o11y"
 	"github.com/jailtonjunior94/order/pkg/vos"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 const (

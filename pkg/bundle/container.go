@@ -6,7 +6,8 @@ import (
 
 	"github.com/jailtonjunior94/order/configs"
 	"github.com/jailtonjunior94/order/pkg/database/postgres"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+
+	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type Container struct {
@@ -30,9 +31,9 @@ func NewContainer(ctx context.Context) *Container {
 		o11y.WithServiceName(config.O11yConfig.ServiceName),
 		o11y.WithServiceVersion(config.O11yConfig.ServiceVersion),
 		o11y.WithResource(),
-		o11y.WithLoggerProvider(ctx, config.O11yConfig.ExporterEndpoint),
-		o11y.WithTracerProvider(ctx, config.O11yConfig.ExporterEndpoint),
 		o11y.WithMeterProvider(ctx, config.O11yConfig.ExporterEndpoint),
+		o11y.WithTracerProvider(ctx, config.O11yConfig.ExporterEndpoint),
+		o11y.WithLoggerProviderHTTP(ctx, config.O11yConfig.ExporterEndpointHTTP),
 	)
 
 	return &Container{

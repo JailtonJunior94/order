@@ -31,9 +31,10 @@ type (
 	}
 
 	O11yConfig struct {
-		ServiceName      string `mapstructure:"OTEL_SERVICE_NAME"`
-		ServiceVersion   string `mapstructure:"OTEL_SERVICE_VERSION"`
-		ExporterEndpoint string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+		ServiceName          string `mapstructure:"OTEL_SERVICE_NAME"`
+		ServiceVersion       string `mapstructure:"OTEL_SERVICE_VERSION"`
+		ExporterEndpoint     string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+		ExporterEndpointHTTP string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT_HTTP"`
 	}
 
 	KafkaConfig struct {
