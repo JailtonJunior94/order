@@ -65,7 +65,7 @@ func (s *apiServer) Run() {
 			responses.Error(w, http.StatusInternalServerError, "database error connection failed or database is not running")
 			return
 		}
-		responses.JSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
+		responses.JSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 
 	/* Order */

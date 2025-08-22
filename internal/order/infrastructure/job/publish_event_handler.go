@@ -31,5 +31,5 @@ func (h *PublishEventHandler) Handle() {
 		span.AddAttributes(ctx, o11y.Error, "error publish event", o11y.Attributes{Key: "error", Value: err})
 		return
 	}
-	span.AddAttributes(ctx, o11y.Ok, "")
+	span.AddAttributes(ctx, o11y.Ok, "event published successfully")
 }
