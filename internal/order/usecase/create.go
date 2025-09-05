@@ -8,6 +8,7 @@ import (
 	"github.com/jailtonjunior94/order/pkg/database/uow"
 
 	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type (
@@ -16,8 +17,13 @@ type (
 	}
 
 	createOrderUseCase struct {
-		uow  uow.UnitOfWork
-		o11y o11y.Observability
+		uow     uow.UnitOfWork
+		o11y    o11y.Observability
+		metrics *createOrderMetrics
+	}
+
+	createOrderMetrics struct {
+		orderCounter metric.Int64Counter
 	}
 )
 
@@ -25,10 +31,12 @@ func NewCreateOrderUseCase(
 	uow uow.UnitOfWork,
 	o11y o11y.Observability,
 ) CreateOrderUseCase {
-	return &createOrderUseCase{
+	uc := &createOrderUseCase{
 		uow:  uow,
 		o11y: o11y,
 	}
+	uc.addMetrics()
+	return uc
 }
 
 func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput) (*dtos.OrderOutput, error) {
@@ -64,5 +72,16 @@ func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput
 		span.AddAttributes(ctx, o11y.Error, "error create order", o11y.Attributes{Key: "error", Value: err})
 		return nil, err
 	}
+
+	c.metrics.orderCounter.Add(ctx, 1)
 	return dtos.NewOrderOutput(newOrder.ID.String(), newOrder.Status.String()), nil
+}
+
+func (c *createOrderUseCase) addMetrics() (*createOrderUseCase, error) {
+	orderCounter, err := c.o11y.Meter().Int64Counter("order_created_total", metric.WithDescription("Total number of orders created"))
+	if err != nil {
+		return nil, err
+	}
+	c.metrics = &createOrderMetrics{orderCounter: orderCounter}
+	return c, nil
 }
