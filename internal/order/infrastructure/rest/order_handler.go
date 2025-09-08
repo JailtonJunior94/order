@@ -41,7 +41,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		span.RecordError(err)
-		responses.Error(w, http.StatusUnprocessableEntity, "Unprocessable Entity")
+		responses.Error(w, http.StatusUnprocessableEntity, "unprocessable Entity")
 		return
 	}
 

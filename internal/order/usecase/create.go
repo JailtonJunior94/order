@@ -5,6 +5,7 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
 	"github.com/jailtonjunior94/order/internal/order/domain/factories"
+	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/pkg/database/uow"
 
 	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
@@ -17,9 +18,10 @@ type (
 	}
 
 	createOrderUseCase struct {
-		uow     uow.UnitOfWork
-		o11y    o11y.Observability
-		metrics *createOrderMetrics
+		uow             uow.UnitOfWork
+		o11y            o11y.Observability
+		metrics         *createOrderMetrics
+		orderRepository interfaces.OrderRepository
 	}
 
 	createOrderMetrics struct {
@@ -28,12 +30,14 @@ type (
 )
 
 func NewCreateOrderUseCase(
-	uow uow.UnitOfWork,
 	o11y o11y.Observability,
+	uow uow.UnitOfWork,
+	orderRepository interfaces.OrderRepository,
 ) CreateOrderUseCase {
 	uc := &createOrderUseCase{
-		uow:  uow,
-		o11y: o11y,
+		uow:             uow,
+		o11y:            o11y,
+		orderRepository: orderRepository,
 	}
 	uc.addMetrics()
 	return uc
@@ -49,19 +53,13 @@ func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput
 		return nil, err
 	}
 
-	err = c.uow.Do(ctx, func(ctx context.Context, tx uow.TX) error {
-		orderRepository, err := GetOrderRepository(tx)
-		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error get order repository", o11y.Attributes{Key: "error", Value: err})
-			return err
-		}
-
-		if err := orderRepository.Insert(ctx, newOrder); err != nil {
+	err = c.uow.Do(ctx, func(ctx context.Context) error {
+		if err := c.orderRepository.Insert(ctx, newOrder); err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error insert order", o11y.Attributes{Key: "error", Value: err})
 			return err
 		}
 
-		if err := orderRepository.InsertItems(ctx, newOrder.Items); err != nil {
+		if err := c.orderRepository.InsertItems(ctx, newOrder.Items); err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error insert items", o11y.Attributes{Key: "error", Value: err})
 			return err
 		}

@@ -7,21 +7,20 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/internal/order/domain/vos"
+	"github.com/jailtonjunior94/order/pkg/database/uow"
 	sharedVos "github.com/jailtonjunior94/order/pkg/vos"
 
 	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type orderRepository struct {
-	db   *sql.DB
-	tx   *sql.Tx
+	exec uow.Executor
 	o11y o11y.Observability
 }
 
-func NewOrderRepository(db *sql.DB, tx *sql.Tx, o11y o11y.Observability) interfaces.OrderRepository {
+func NewOrderRepository(exec uow.Executor, o11y o11y.Observability) interfaces.OrderRepository {
 	return &orderRepository{
-		db:   db,
-		tx:   tx,
+		exec: exec,
 		o11y: o11y,
 	}
 }
@@ -40,7 +39,7 @@ func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*en
 			  where
 				status = $1`
 
-	rows, err := r.tx.QueryContext(ctx, query, status.String())
+	rows, err := r.exec.QueryContext(ctx, query, status.String())
 	if err != nil {
 		span.AddAttributes(ctx, o11y.Error, "error find all orders", o11y.Attributes{Key: "error", Value: err})
 		return nil, err
@@ -80,7 +79,7 @@ func (r *orderRepository) Find(ctx context.Context, orderID sharedVos.UUID) (*en
 				id = $1`
 
 	var order entities.Order
-	err := r.tx.QueryRowContext(ctx, query, orderID.String()).Scan(
+	err := r.exec.QueryRowContext(ctx, query, orderID.String()).Scan(
 		&order.ID.Value,
 		&order.Status,
 		&order.CreatedAt,
@@ -107,7 +106,7 @@ func (r *orderRepository) Insert(ctx context.Context, order *entities.Order) err
 			  values
 				($1, $2, $3, $4)`
 
-	_, err := r.tx.ExecContext(
+	_, err := r.exec.ExecContext(
 		ctx,
 		query,
 		order.ID.Value,
@@ -140,7 +139,7 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 					($1, $2, $3, $4, $5, $6, $7)`
 
 	for _, item := range items {
-		_, err := r.tx.ExecContext(
+		_, err := r.exec.ExecContext(
 			ctx,
 			query,
 			item.ID.Value,
@@ -172,7 +171,7 @@ func (r *orderRepository) Update(ctx context.Context, order *entities.Order) err
 			  where
 				id = $3`
 
-	_, err := r.tx.ExecContext(
+	_, err := r.exec.ExecContext(
 		ctx,
 		query,
 		order.Status.String(),

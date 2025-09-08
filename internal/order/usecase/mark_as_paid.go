@@ -6,6 +6,7 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/events"
+	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/pkg/database/uow"
 	"github.com/jailtonjunior94/order/pkg/vos"
 
@@ -23,18 +24,24 @@ type (
 	}
 
 	markAsPaidUseCase struct {
-		uow  uow.UnitOfWork
-		o11y o11y.Observability
+		uow              uow.UnitOfWork
+		o11y             o11y.Observability
+		orderRepository  interfaces.OrderRepository
+		outboxRepository interfaces.OutboxRepository
 	}
 )
 
 func NewMarkAsPaidUseCase(
-	uow uow.UnitOfWork,
 	o11y o11y.Observability,
+	uow uow.UnitOfWork,
+	orderRepository interfaces.OrderRepository,
+	outboxRepository interfaces.OutboxRepository,
 ) MarkAsPaidUseCase {
 	return &markAsPaidUseCase{
-		uow:  uow,
-		o11y: o11y,
+		uow:              uow,
+		o11y:             o11y,
+		orderRepository:  orderRepository,
+		outboxRepository: outboxRepository,
 	}
 }
 
@@ -43,20 +50,8 @@ func (u *markAsPaidUseCase) Execute(ctx context.Context, orderID vos.UUID) (*dto
 	defer span.End()
 
 	var orderUpdated *entities.Order
-	err := u.uow.Do(ctx, func(ctx context.Context, tx uow.TX) error {
-		orderRepository, err := GetOrderRepository(tx)
-		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error get order repository", o11y.Attributes{Key: "error", Value: err})
-			return err
-		}
-
-		outboxRepository, err := GetOutboxRepository(tx)
-		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error get outbox repository", o11y.Attributes{Key: "error", Value: err})
-			return err
-		}
-
-		order, err := orderRepository.Find(ctx, orderID)
+	err := u.uow.Do(ctx, func(ctx context.Context) error {
+		order, err := u.orderRepository.Find(ctx, orderID)
 		if err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error find order", o11y.Attributes{Key: "error", Value: err})
 			return err
@@ -68,7 +63,7 @@ func (u *markAsPaidUseCase) Execute(ctx context.Context, orderID vos.UUID) (*dto
 		}
 
 		orderUpdated = order.MarkAsPaid()
-		if err := orderRepository.Update(ctx, order); err != nil {
+		if err := u.orderRepository.Update(ctx, order); err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error update order", o11y.Attributes{Key: "error", Value: err})
 			return err
 		}
@@ -79,7 +74,7 @@ func (u *markAsPaidUseCase) Execute(ctx context.Context, orderID vos.UUID) (*dto
 			return err
 		}
 
-		if err := outboxRepository.Insert(ctx, outbox); err != nil {
+		if err := u.outboxRepository.Insert(ctx, outbox); err != nil {
 			span.AddAttributes(ctx, o11y.Error, "error insert outbox", o11y.Attributes{Key: "error", Value: err})
 			return err
 		}

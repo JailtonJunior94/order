@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
-	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type (

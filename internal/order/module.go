@@ -1,8 +1,6 @@
 package order
 
 import (
-	"database/sql"
-
 	"github.com/jailtonjunior94/order/internal/order/infrastructure/job"
 	"github.com/jailtonjunior94/order/internal/order/infrastructure/repositories"
 	"github.com/jailtonjunior94/order/internal/order/infrastructure/rest"
@@ -16,16 +14,10 @@ import (
 
 func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
-	uow.Register("OrderRepository", func(tx *sql.Tx) unitOfWork.Repository {
-		return repositories.NewOrderRepository(ioc.DB, tx, ioc.Observability)
-	})
-
-	uow.Register("OutboxRepository", func(tx *sql.Tx) unitOfWork.Repository {
-		return repositories.NewOutboxRepository(ioc.DB, tx, ioc.Observability)
-	})
-
-	createOrderUseCase := usecase.NewCreateOrderUseCase(uow, ioc.Observability)
-	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(uow, ioc.Observability)
+	orderRepository := repositories.NewOrderRepository(uow.Executor(), ioc.Observability)
+	outboxRepository := repositories.NewOutboxRepository(uow.Executor(), ioc.Observability)
+	createOrderUseCase := usecase.NewCreateOrderUseCase(ioc.Observability, uow, orderRepository)
+	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(ioc.Observability, uow, orderRepository, outboxRepository)
 
 	orderHandler := rest.NewUserHandler(
 		ioc.Observability,
@@ -41,11 +33,8 @@ func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 
 func RegisterPublishEventHandler(ioc *bundle.Container) *job.PublishEventHandler {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
-	uow.Register("OutboxRepository", func(tx *sql.Tx) unitOfWork.Repository {
-		return repositories.NewOutboxRepository(ioc.DB, tx, ioc.Observability)
-	})
-
-	brokeClient := kafka.NewKafkaClient(ioc.Config.KafkaConfig.Brokers[0], ioc.Observability)
-	publishEventUseCase := usecase.NewPublishEventUseCase(ioc.Config, uow, brokeClient, ioc.Observability)
+	outboxRepository := repositories.NewOutboxRepository(uow.Executor(), ioc.Observability)
+	brokerClient := kafka.NewKafkaClient(ioc.Config.KafkaConfig.Brokers[0], ioc.Observability)
+	publishEventUseCase := usecase.NewPublishEventUseCase(ioc.Observability, ioc.Config, brokerClient, uow, outboxRepository)
 	return job.NewPublishEventHandler(ioc.Observability, publishEventUseCase)
 }

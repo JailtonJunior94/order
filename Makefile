@@ -12,7 +12,7 @@ build_order:
 
 start_docker:
 	@echo "Starting Docker containers..."
-	docker compose -f deployment/docker-compose.yml up --build -d
+	docker compose -f deployment/docker-compose.yml up --build -d --remove-orphans
 	
 stop_docker:
 	@echo "Stopping Docker containers..."
