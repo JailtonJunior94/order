@@ -14,10 +14,9 @@ import (
 
 func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
-	orderRepository := repositories.NewOrderRepository(uow.Executor(), ioc.Observability)
-	outboxRepository := repositories.NewOutboxRepository(uow.Executor(), ioc.Observability)
-	createOrderUseCase := usecase.NewCreateOrderUseCase(ioc.Observability, uow, orderRepository)
-	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(ioc.Observability, uow, orderRepository, outboxRepository)
+	repositoryFactory := repositories.NewRepositoryFactory()
+	createOrderUseCase := usecase.NewCreateOrderUseCase(uow, ioc.Observability, repositoryFactory)
+	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(uow, ioc.Observability, repositoryFactory)
 
 	orderHandler := rest.NewUserHandler(
 		ioc.Observability,
@@ -33,8 +32,8 @@ func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 
 func RegisterPublishEventHandler(ioc *bundle.Container) *job.PublishEventHandler {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
-	outboxRepository := repositories.NewOutboxRepository(uow.Executor(), ioc.Observability)
+	repositoryFactory := repositories.NewRepositoryFactory()
 	brokerClient := kafka.NewKafkaClient(ioc.Config.KafkaConfig.Brokers[0], ioc.Observability)
-	publishEventUseCase := usecase.NewPublishEventUseCase(ioc.Observability, ioc.Config, brokerClient, uow, outboxRepository)
+	publishEventUseCase := usecase.NewPublishEventUseCase(uow, ioc.Config, ioc.Observability, brokerClient, repositoryFactory)
 	return job.NewPublishEventHandler(ioc.Observability, publishEventUseCase)
 }

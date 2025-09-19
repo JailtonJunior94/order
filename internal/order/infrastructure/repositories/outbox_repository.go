@@ -5,19 +5,19 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
-	"github.com/jailtonjunior94/order/pkg/database/uow"
+	"github.com/jailtonjunior94/order/pkg/database"
 
 	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type outboxRepository struct {
-	exec uow.Executor
+	db   database.DBTX
 	o11y o11y.Observability
 }
 
-func NewOutboxRepository(exec uow.Executor, o11y o11y.Observability) interfaces.OutboxRepository {
+func NewOutboxRepository(db database.DBTX, o11y o11y.Observability) interfaces.OutboxRepository {
 	return &outboxRepository{
-		exec: exec,
+		db:   db,
 		o11y: o11y,
 	}
 }
@@ -30,7 +30,7 @@ func (r *outboxRepository) Insert(ctx context.Context, outbox *entities.Outbox) 
 			  values
 				($1, $2, $3, $4, $5, $6)`
 
-	_, err := r.exec.ExecContext(
+	_, err := r.db.ExecContext(
 		ctx,
 		query,
 		outbox.ID.Value,
@@ -63,7 +63,7 @@ func (r *outboxRepository) FindAll(ctx context.Context, wasPublished bool) ([]*e
 			  where
 				o.was_published = $1`
 
-	rows, err := r.exec.QueryContext(ctx, query, wasPublished)
+	rows, err := r.db.QueryContext(ctx, query, wasPublished)
 	if err != nil {
 		span.AddAttributes(ctx, o11y.Error, "error find all outbox", o11y.Attributes{Key: "error", Value: err})
 		return nil, err
@@ -102,7 +102,7 @@ func (r *outboxRepository) Update(ctx context.Context, outbox *entities.Outbox) 
 			  where
 				id = $3`
 
-	_, err := r.exec.ExecContext(
+	_, err := r.db.ExecContext(
 		ctx,
 		query,
 		outbox.WasPublished,
