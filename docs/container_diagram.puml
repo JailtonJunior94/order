@@ -1,0 +1,26 @@
+@startuml container_diagram
+
+!define RECTANGLE class
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Icons.puml
+
+title C4 Model - Container Diagram: Order System
+
+Person(user, "Usuário", "Interage via HTTP")
+
+Container(api, "API Golang", "Go", "Criação e atualização de pedidos via HTTP REST", $icon="go")
+ContainerDb(db, "CockroachDB", "Database", "Armazena pedidos", $icon="cockroachdb")
+Container(outbox, "Outbox Table", "Database Table", "Armazena eventos de pedidos pagos", $icon="database_table")
+Container(worker, "Worker", "Go", "Lê eventos da Outbox e publica no Kafka", $icon="worker")
+Container(kafka, "Kafka", "Kafka", "Fila de eventos", $icon="kafka")
+Container(consumer, "Consumer", "Go", "Processa eventos do Kafka", $icon="consumer")
+
+Rel(user, api, "Cria pedido / Marca como pago")
+Rel(api, db, "Insere/Atualiza pedido")
+Rel(api, outbox, "Salva evento de pedido pago")
+Rel(worker, outbox, "Lê eventos")
+Rel(worker, kafka, "Publica evento")
+Rel(consumer, kafka, "Consome evento")
+Rel(consumer, db, "Atualiza/processa pedido")
+
+@enduml
