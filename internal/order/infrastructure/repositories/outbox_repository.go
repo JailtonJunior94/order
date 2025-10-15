@@ -6,24 +6,23 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/entities"
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/pkg/database"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 type outboxRepository struct {
-	db   database.DBTX
-	o11y o11y.Observability
+	db        database.DBTX
+	telemetry o11y.Telemetry
 }
 
-func NewOutboxRepository(db database.DBTX, o11y o11y.Observability) interfaces.OutboxRepository {
+func NewOutboxRepository(db database.DBTX, telemetry o11y.Telemetry) interfaces.OutboxRepository {
 	return &outboxRepository{
-		db:   db,
-		o11y: o11y,
+		db:        db,
+		telemetry: telemetry,
 	}
 }
 
 func (r *outboxRepository) Insert(ctx context.Context, outbox *entities.Outbox) error {
-	ctx, span := r.o11y.Start(ctx, "outbox_repository.insert")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "outbox_repository.insert")
 	defer span.End()
 	query := `insert into
 				outbox (id, event_name, was_published, published_at, payload, created_at)
@@ -41,14 +40,14 @@ func (r *outboxRepository) Insert(ctx context.Context, outbox *entities.Outbox) 
 		outbox.CreatedAt,
 	)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error insert outbox", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error insert outbox", o11y.Attribute{Key: "error", Value: err})
 		return err
 	}
 	return nil
 }
 
 func (r *outboxRepository) FindAll(ctx context.Context, wasPublished bool) ([]*entities.Outbox, error) {
-	ctx, span := r.o11y.Start(ctx, "outbox_repository.find_all")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "outbox_repository.find_all")
 	defer span.End()
 
 	query := `select
@@ -65,7 +64,7 @@ func (r *outboxRepository) FindAll(ctx context.Context, wasPublished bool) ([]*e
 
 	rows, err := r.db.QueryContext(ctx, query, wasPublished)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error find all outbox", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error find all outbox", o11y.Attribute{Key: "error", Value: err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -82,7 +81,7 @@ func (r *outboxRepository) FindAll(ctx context.Context, wasPublished bool) ([]*e
 			&outbox.CreatedAt,
 		)
 		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error scan row", o11y.Attributes{Key: "error", Value: err})
+			span.AddEvent("error scan row", o11y.Attribute{Key: "error", Value: err})
 			return nil, err
 		}
 		outboxes = append(outboxes, &outbox)
@@ -91,7 +90,7 @@ func (r *outboxRepository) FindAll(ctx context.Context, wasPublished bool) ([]*e
 }
 
 func (r *outboxRepository) Update(ctx context.Context, outbox *entities.Outbox) error {
-	ctx, span := r.o11y.Start(ctx, "outbox_repository.update")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "outbox_repository.update")
 	defer span.End()
 
 	query := `update
@@ -110,7 +109,7 @@ func (r *outboxRepository) Update(ctx context.Context, outbox *entities.Outbox) 
 		outbox.ID.Value,
 	)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error update outbox", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error update outbox", o11y.Attribute{Key: "error", Value: err})
 		return err
 	}
 	return nil

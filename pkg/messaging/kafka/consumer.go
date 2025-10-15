@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/segmentio/kafka-go"
@@ -30,12 +30,12 @@ type (
 		handler    ConsumeHandler
 		backoff    backoff.BackOff
 		retryChan  chan kafka.Message
-		o11y       o11y.Observability
+		telemetry  o11y.Telemetry
 	}
 )
 
-func NewConsumer(o11y o11y.Observability, options ...ConsumerOptions) Consumer {
-	consumer := &consumer{o11y: o11y}
+func NewConsumer(telemetry o11y.Telemetry, options ...ConsumerOptions) Consumer {
+	consumer := &consumer{telemetry: telemetry}
 	for _, opt := range options {
 		opt(consumer)
 	}
@@ -129,7 +129,7 @@ func WithHandler(handler ConsumeHandler) ConsumerOptions {
 }
 
 func (c *consumer) dispatcher(ctx context.Context, message kafka.Message, handler ConsumeHandler) error {
-	ctx, span := c.o11y.Start(ctx, "consumer.consume")
+	ctx, span := c.telemetry.Tracer().Start(ctx, "consumer.consume")
 	defer span.End()
 
 	err := handler(ctx, message.Value)

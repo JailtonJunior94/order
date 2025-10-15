@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/propagation"
@@ -15,8 +15,8 @@ type (
 	}
 
 	kafkaClient struct {
-		client *kafka.Writer
-		o11y   o11y.Observability
+		client    *kafka.Writer
+		telemetry o11y.Telemetry
 	}
 
 	Message struct {
@@ -27,17 +27,17 @@ type (
 
 func NewKafkaClient(
 	broker string,
-	o11y o11y.Observability,
+	telemetry o11y.Telemetry,
 ) KafkaClient {
 	client := &kafka.Writer{
 		Addr:     kafka.TCP(broker),
 		Balancer: &kafka.LeastBytes{},
 	}
-	return &kafkaClient{o11y: o11y, client: client}
+	return &kafkaClient{telemetry: telemetry, client: client}
 }
 
 func (k *kafkaClient) Produce(ctx context.Context, topic string, headers map[string]string, message *Message) error {
-	ctx, span := k.o11y.Start(ctx, "producer.produce")
+	ctx, span := k.telemetry.Tracer().Start(ctx, "producer.produce")
 	defer span.End()
 
 	messageKafka := kafka.Message{

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order"
 	"github.com/jailtonjunior94/order/pkg/bundle"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 	"github.com/jailtonjunior94/order/pkg/responses"
 
 	"github.com/go-chi/chi/v5"
@@ -31,19 +32,45 @@ func (s *apiServer) Run() {
 	ioc := bundle.NewContainer(ctx)
 
 	/* Observability */
-	tracerProvider := ioc.Observability.TracerProvider()
+	resource, err := o11y.NewServiceResource(ctx, ioc.Config.O11yConfig.OrderAPI, ioc.Config.O11yConfig.ServiceVersion, ioc.Config.Environment)
+	if err != nil {
+		log.Fatalf("failed to create resource: %v", err)
+	}
+
+	metrics, shutdown, err := o11y.NewMetrics(ctx, ioc.Config.O11yConfig.ExporterEndpoint, ioc.Config.O11yConfig.OrderAPI, resource)
+	if err != nil {
+		log.Fatalf("failed to create metrics: %v", err)
+	}
 	defer func() {
-		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Fatal(err)
+		if err := shutdown(ctx); err != nil {
+			log.Fatalf("failed to shutdown metrics: %v", err)
 		}
 	}()
 
-	meterProvider := ioc.Observability.MeterProvider()
+	tracer, shutdown, err := o11y.NewTracer(ctx, ioc.Config.O11yConfig.ExporterEndpoint, ioc.Config.O11yConfig.OrderAPI, resource)
+	if err != nil {
+		log.Fatalf("failed to create tracer: %v", err)
+	}
 	defer func() {
-		if err := meterProvider.Shutdown(ctx); err != nil {
-			log.Fatal(err)
+		if err := shutdown(ctx); err != nil {
+			log.Fatalf("failed to shutdown tracer: %v", err)
 		}
 	}()
+
+	logger, shutdown, err := o11y.NewLogger(ctx, tracer, ioc.Config.O11yConfig.ExporterEndpointHTTP, ioc.Config.O11yConfig.OrderAPI, resource)
+	if err != nil {
+		log.Fatalf("failed to create logger: %v", err)
+	}
+	defer func() {
+		if err := shutdown(ctx); err != nil {
+			log.Fatalf("failed to shutdown logger: %v", err)
+		}
+	}()
+
+	telemetry, err := o11y.NewTelemetry(tracer, metrics, logger)
+	if err != nil {
+		log.Fatalf("failed to create telemetry: %v", err)
+	}
 
 	/* Close DBConnection */
 	defer func() {
@@ -69,7 +96,7 @@ func (s *apiServer) Run() {
 	})
 
 	/* Order */
-	order.RegisterOrderModule(ioc, router)
+	order.RegisterOrderModule(ioc, telemetry, router)
 
 	/* Graceful shutdown */
 	server := http.Server{

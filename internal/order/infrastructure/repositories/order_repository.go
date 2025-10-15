@@ -8,25 +8,24 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/internal/order/domain/vos"
 	"github.com/jailtonjunior94/order/pkg/database"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 	sharedVos "github.com/jailtonjunior94/order/pkg/vos"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type orderRepository struct {
-	db   database.DBTX
-	o11y o11y.Observability
+	db        database.DBTX
+	telemetry o11y.Telemetry
 }
 
-func NewOrderRepository(db database.DBTX, o11y o11y.Observability) interfaces.OrderRepository {
+func NewOrderRepository(db database.DBTX, telemetry o11y.Telemetry) interfaces.OrderRepository {
 	return &orderRepository{
-		db:   db,
-		o11y: o11y,
+		db:        db,
+		telemetry: telemetry,
 	}
 }
 
 func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*entities.Order, error) {
-	ctx, span := r.o11y.Start(ctx, "order_repository.find_all")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "order_repository.find_all")
 	defer span.End()
 
 	query := `select 
@@ -41,7 +40,7 @@ func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*en
 
 	rows, err := r.db.QueryContext(ctx, query, status.String())
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error find all orders", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error find all orders", o11y.Attribute{Key: "error", Value: err})
 		return nil, err
 	}
 	defer rows.Close()
@@ -56,7 +55,7 @@ func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*en
 			&order.UpdatedAt.Time,
 		)
 		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error scan row", o11y.Attributes{Key: "error", Value: err})
+			span.AddEvent("error scan row", o11y.Attribute{Key: "error", Value: err})
 			return nil, err
 		}
 		orders = append(orders, &order)
@@ -65,7 +64,7 @@ func (r *orderRepository) FindAll(ctx context.Context, status vos.Status) ([]*en
 }
 
 func (r *orderRepository) Find(ctx context.Context, orderID sharedVos.UUID) (*entities.Order, error) {
-	ctx, span := r.o11y.Start(ctx, "order_repository.find")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "order_repository.find")
 	defer span.End()
 
 	query := `select
@@ -88,17 +87,17 @@ func (r *orderRepository) Find(ctx context.Context, orderID sharedVos.UUID) (*en
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			span.AddAttributes(ctx, o11y.Ok, "order found", o11y.Attributes{Key: "order_id", Value: orderID.String()})
+			span.AddEvent("order found", o11y.Attribute{Key: "order_id", Value: orderID.String()})
 			return nil, nil
 		}
-		span.AddAttributes(ctx, o11y.Error, "error find order", o11y.Attributes{Key: "order_id", Value: orderID.String()})
+		span.AddEvent("error find order", o11y.Attribute{Key: "order_id", Value: orderID.String()})
 		return nil, err
 	}
 	return &order, nil
 }
 
 func (r *orderRepository) Insert(ctx context.Context, order *entities.Order) error {
-	ctx, span := r.o11y.Start(ctx, "order_repository.insert")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "order_repository.insert")
 	defer span.End()
 
 	query := `insert into
@@ -115,14 +114,14 @@ func (r *orderRepository) Insert(ctx context.Context, order *entities.Order) err
 		order.UpdatedAt.Time,
 	)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error insert order", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error insert order", o11y.Attribute{Key: "error", Value: err})
 		return err
 	}
 	return nil
 }
 
 func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.OrderItem) error {
-	ctx, span := r.o11y.Start(ctx, "order_repository.insert_items")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "order_repository.insert_items")
 	defer span.End()
 
 	query := `insert into
@@ -151,7 +150,7 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 			item.UpdatedAt.Time,
 		)
 		if err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error insert order item", o11y.Attributes{Key: "error", Value: err})
+			span.AddEvent("error insert order item", o11y.Attribute{Key: "error", Value: err})
 			return err
 		}
 	}
@@ -160,7 +159,7 @@ func (r *orderRepository) InsertItems(ctx context.Context, items []*entities.Ord
 }
 
 func (r *orderRepository) Update(ctx context.Context, order *entities.Order) error {
-	ctx, span := r.o11y.Start(ctx, "order_repository.update")
+	ctx, span := r.telemetry.Tracer().Start(ctx, "order_repository.update")
 	defer span.End()
 
 	query := `update
@@ -179,7 +178,7 @@ func (r *orderRepository) Update(ctx context.Context, order *entities.Order) err
 		order.ID.Value,
 	)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error update order", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error update order", o11y.Attribute{Key: "error", Value: err})
 		return err
 	}
 	return nil

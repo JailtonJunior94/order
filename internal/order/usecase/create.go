@@ -8,9 +8,7 @@ import (
 	"github.com/jailtonjunior94/order/internal/order/domain/interfaces"
 	"github.com/jailtonjunior94/order/pkg/database"
 	"github.com/jailtonjunior94/order/pkg/database/uow"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
-	"go.opentelemetry.io/otel/metric"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 type (
@@ -20,63 +18,52 @@ type (
 
 	createOrderUseCase struct {
 		uow               uow.UnitOfWork
-		o11y              o11y.Observability
-		metrics           *createOrderMetrics
+		telemetry         o11y.Telemetry
 		repositoryFactory interfaces.RepositoryFactory
-	}
-
-	createOrderMetrics struct {
-		orderCounter metric.Int64Counter
 	}
 )
 
 func NewCreateOrderUseCase(
 	uow uow.UnitOfWork,
-	o11y o11y.Observability,
+	telemetry o11y.Telemetry,
 	repositoryFactory interfaces.RepositoryFactory,
 ) CreateOrderUseCase {
-	orderCounter, err := o11y.Meter().Int64Counter("order_created_total", metric.WithDescription("Total number of orders created"))
-	if err != nil {
-		return nil
-	}
-
 	return &createOrderUseCase{
 		uow:               uow,
-		o11y:              o11y,
+		telemetry:         telemetry,
 		repositoryFactory: repositoryFactory,
-		metrics:           &createOrderMetrics{orderCounter: orderCounter},
 	}
 }
 
 func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput) (*dtos.OrderOutput, error) {
-	ctx, span := c.o11y.Start(ctx, "create_order_usecase.execute")
+	ctx, span := c.telemetry.Tracer().Start(ctx, "create_order_usecase.execute")
 	defer span.End()
 
 	newOrder, err := factories.CreateOrder(input)
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error create order", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error creating order", o11y.Attribute{Key: "error", Value: err})
 		return nil, err
 	}
 
 	err = c.uow.Do(ctx, func(ctx context.Context, db database.DBTX) error {
-		orderRepository := c.repositoryFactory.OrderRepository(db, c.o11y)
+		orderRepository := c.repositoryFactory.OrderRepository(db, c.telemetry)
 		if err := orderRepository.Insert(ctx, newOrder); err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error insert order", o11y.Attributes{Key: "error", Value: err})
+			span.AddEvent("error inserting order", o11y.Attribute{Key: "error", Value: err})
 			return err
 		}
 
 		if err := orderRepository.InsertItems(ctx, newOrder.Items); err != nil {
-			span.AddAttributes(ctx, o11y.Error, "error insert items", o11y.Attributes{Key: "error", Value: err})
+			span.AddEvent("error inserting items", o11y.Attribute{Key: "error", Value: err})
 			return err
 		}
 		return nil
 	})
 
 	if err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error create order", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error creating order", o11y.Attribute{Key: "error", Value: err})
 		return nil, err
 	}
 
-	c.metrics.orderCounter.Add(ctx, 1)
+	c.telemetry.Metrics().AddCounter(ctx, "order_created_total", 1, nil)
 	return dtos.NewOrderOutput(newOrder.ID.String(), newOrder.Status.String()), nil
 }

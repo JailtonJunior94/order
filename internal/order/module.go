@@ -8,18 +8,19 @@ import (
 	"github.com/jailtonjunior94/order/pkg/bundle"
 	unitOfWork "github.com/jailtonjunior94/order/pkg/database/uow"
 	"github.com/jailtonjunior94/order/pkg/messaging/kafka"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 
 	"github.com/go-chi/chi/v5"
 )
 
-func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
+func RegisterOrderModule(ioc *bundle.Container, telemetry o11y.Telemetry, router *chi.Mux) {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
 	repositoryFactory := repositories.NewRepositoryFactory()
-	createOrderUseCase := usecase.NewCreateOrderUseCase(uow, ioc.Observability, repositoryFactory)
-	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(uow, ioc.Observability, repositoryFactory)
+	createOrderUseCase := usecase.NewCreateOrderUseCase(uow, telemetry, repositoryFactory)
+	markAsPaidUseCaseUseCase := usecase.NewMarkAsPaidUseCase(uow, telemetry, repositoryFactory)
 
 	orderHandler := rest.NewUserHandler(
-		ioc.Observability,
+		telemetry,
 		createOrderUseCase,
 		markAsPaidUseCaseUseCase,
 	)
@@ -30,10 +31,10 @@ func RegisterOrderModule(ioc *bundle.Container, router *chi.Mux) {
 	)
 }
 
-func RegisterPublishEventHandler(ioc *bundle.Container) *job.PublishEventHandler {
+func RegisterPublishEventHandler(ioc *bundle.Container, telemetry o11y.Telemetry) *job.PublishEventHandler {
 	uow := unitOfWork.NewUnitOfWork(ioc.DB)
 	repositoryFactory := repositories.NewRepositoryFactory()
-	brokerClient := kafka.NewKafkaClient(ioc.Config.KafkaConfig.Brokers[0], ioc.Observability)
-	publishEventUseCase := usecase.NewPublishEventUseCase(uow, ioc.Config, ioc.Observability, brokerClient, repositoryFactory)
-	return job.NewPublishEventHandler(ioc.Observability, publishEventUseCase)
+	brokerClient := kafka.NewKafkaClient(ioc.Config.KafkaConfig.Brokers[0], telemetry)
+	publishEventUseCase := usecase.NewPublishEventUseCase(uow, ioc.Config, telemetry, brokerClient, repositoryFactory)
+	return job.NewPublishEventHandler(telemetry, publishEventUseCase)
 }

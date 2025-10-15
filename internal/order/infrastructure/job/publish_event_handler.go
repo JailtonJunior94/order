@@ -4,32 +4,31 @@ import (
 	"context"
 
 	"github.com/jailtonjunior94/order/internal/order/usecase"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/o11y"
 )
 
 type PublishEventHandler struct {
-	o11y         o11y.Observability
+	telemetry    o11y.Telemetry
 	publishEvent usecase.PublishEventUseCase
 }
 
 func NewPublishEventHandler(
-	o11y o11y.Observability,
+	telemetry o11y.Telemetry,
 	publishEvent usecase.PublishEventUseCase,
 ) *PublishEventHandler {
 	return &PublishEventHandler{
-		o11y:         o11y,
+		telemetry:    telemetry,
 		publishEvent: publishEvent,
 	}
 }
 
 func (h *PublishEventHandler) Handle() {
-	ctx, span := h.o11y.Start(context.Background(), "publish_event_handler.handle")
+	ctx, span := h.telemetry.Tracer().Start(context.Background(), "publish_event_handler.handle")
 	defer span.End()
 
 	if err := h.publishEvent.Execute(ctx); err != nil {
-		span.AddAttributes(ctx, o11y.Error, "error publish event", o11y.Attributes{Key: "error", Value: err})
+		span.AddEvent("error publish event", o11y.Attribute{Key: "error", Value: err})
 		return
 	}
-	span.AddAttributes(ctx, o11y.Ok, "event published successfully")
+	span.AddEvent("event published successfully", o11y.Attribute{Key: "status", Value: "ok"})
 }

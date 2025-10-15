@@ -8,6 +8,7 @@ import (
 
 type (
 	Config struct {
+		Environment  string       `mapstructure:"ENVIRONMENT"`
 		DBConfig     DBConfig     `mapstructure:",squash"`
 		HTTPConfig   HTTPConfig   `mapstructure:",squash"`
 		O11yConfig   O11yConfig   `mapstructure:",squash"`
@@ -31,7 +32,9 @@ type (
 	}
 
 	O11yConfig struct {
-		ServiceName          string `mapstructure:"OTEL_SERVICE_NAME"`
+		OrderAPI             string `mapstructure:"ORDER_API_SERVICE_NAME"`
+		OrderWorker          string `mapstructure:"ORDER_WORKER_SERVICE_NAME"`
+		OrderConsumer        string `mapstructure:"ORDER_CONSUMER_SERVICE_NAME"`
 		ServiceVersion       string `mapstructure:"OTEL_SERVICE_VERSION"`
 		ExporterEndpoint     string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 		ExporterEndpointHTTP string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT_HTTP"`

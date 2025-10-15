@@ -7,14 +7,11 @@ import (
 
 	"github.com/jailtonjunior94/order/configs"
 	"github.com/jailtonjunior94/order/pkg/database/postgres"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 )
 
 type Container struct {
-	DB            *sql.DB
-	Config        *configs.Config
-	Observability o11y.Observability
+	DB     *sql.DB
+	Config *configs.Config
 }
 
 func NewContainer(ctx context.Context) *Container {
@@ -28,18 +25,8 @@ func NewContainer(ctx context.Context) *Container {
 		log.Fatalf("failed to create database: %v", err)
 	}
 
-	observability := o11y.NewObservability(
-		o11y.WithServiceName(config.O11yConfig.ServiceName),
-		o11y.WithServiceVersion(config.O11yConfig.ServiceVersion),
-		o11y.WithResource(),
-		o11y.WithMeterProvider(ctx, config.O11yConfig.ExporterEndpoint),
-		o11y.WithTracerProvider(ctx, config.O11yConfig.ExporterEndpoint),
-		o11y.WithLoggerProviderHTTP(ctx, config.O11yConfig.ExporterEndpointHTTP),
-	)
-
 	return &Container{
-		DB:            db,
-		Config:        config,
-		Observability: observability,
+		DB:     db,
+		Config: config,
 	}
 }

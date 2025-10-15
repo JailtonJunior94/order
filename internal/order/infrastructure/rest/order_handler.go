@@ -6,48 +6,46 @@ import (
 
 	"github.com/jailtonjunior94/order/internal/order/domain/dtos"
 	"github.com/jailtonjunior94/order/internal/order/usecase"
-
+	"github.com/jailtonjunior94/order/pkg/o11y"
 	"github.com/jailtonjunior94/order/pkg/responses"
 	"github.com/jailtonjunior94/order/pkg/vos"
-
-	"github.com/JailtonJunior94/devkit-go/pkg/o11y"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type UserHandler struct {
-	o11y              o11y.Observability
+	telemetry         o11y.Telemetry
 	createUseCase     usecase.CreateOrderUseCase
 	markAsPaidUseCase usecase.MarkAsPaidUseCase
 }
 
 func NewUserHandler(
-	o11y o11y.Observability,
+	telemetry o11y.Telemetry,
 	createUseCase usecase.CreateOrderUseCase,
 	markAsPaidUseCase usecase.MarkAsPaidUseCase,
 ) *UserHandler {
 	return &UserHandler{
-		o11y:              o11y,
+		telemetry:         telemetry,
 		createUseCase:     createUseCase,
 		markAsPaidUseCase: markAsPaidUseCase,
 	}
 }
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.o11y.Start(r.Context(), "order_handler.create")
+	ctx, span := h.telemetry.Tracer().Start(r.Context(), "order_handler.create")
 	defer span.End()
 
 	var input *dtos.OrderInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
-		span.RecordError(err)
+		span.AddEvent("error decoding request body", o11y.Attribute{Key: "error", Value: err})
 		responses.Error(w, http.StatusUnprocessableEntity, "unprocessable Entity")
 		return
 	}
 
 	output, err := h.createUseCase.Execute(ctx, input)
 	if err != nil {
-		span.RecordError(err)
+		span.AddEvent("error creating order", o11y.Attribute{Key: "error", Value: err})
 		responses.Error(w, http.StatusBadRequest, "error creating order")
 		return
 	}
@@ -55,7 +53,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) MarkAsPaid(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.o11y.Start(r.Context(), "order_handler.mark_as_paid")
+	ctx, span := h.telemetry.Tracer().Start(r.Context(), "order_handler.mark_as_paid")
 	defer span.End()
 
 	orderIDParam := chi.URLParam(r, "id")
@@ -72,7 +70,7 @@ func (h *UserHandler) MarkAsPaid(w http.ResponseWriter, r *http.Request) {
 
 	output, err := h.markAsPaidUseCase.Execute(ctx, orderID)
 	if err != nil {
-		span.RecordError(err)
+		span.AddEvent("error updating order", o11y.Attribute{Key: "error", Value: err})
 		responses.Error(w, http.StatusBadRequest, "error updating order")
 		return
 	}
