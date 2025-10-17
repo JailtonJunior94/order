@@ -105,6 +105,11 @@ services:
       - "4318:4318"
       - "4317:4317"
       - "8889:8889"
+    environment:
+      - CORALOGIX_PRIVATE_KEY=${CORALOGIX_PRIVATE_KEY}
+      - CORALOGIX_APP_NAME=${CORALOGIX_APP_NAME}
+      - CORALOGIX_SUBSYSTEM_NAME=${CORALOGIX_SUBSYSTEM_NAME}
+
     depends_on:
       - jaeger
       - prometheus

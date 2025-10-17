@@ -3,6 +3,9 @@ receivers:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+          - "*"
       grpc:
         endpoint: 0.0.0.0:4317
 
@@ -10,6 +13,15 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
+
+  resource:
+    attributes:
+    - key: cx.application.name
+      value: "orders"
+      action: upsert
+    - key: cx.subsystem.name
+      value: "backend"
+      action: upsert
 
 exporters:
   debug:
@@ -22,17 +34,41 @@ exporters:
   otlphttp:
     endpoint: http://loki:3100/otlp
 
+  otlp/coralogix-traces:
+    endpoint: ingress.eu2.coralogix.com:443
+    headers:
+      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+    compression: gzip
+    tls:
+      insecure: false
+
+  otlp/coralogix-metrics:
+    endpoint: ingress.eu2.coralogix.com:443
+    headers:
+      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+    compression: gzip
+    tls:
+      insecure: false
+
+  otlp/coralogix-logs:
+    endpoint: ingress.eu2.coralogix.com:443
+    headers:
+      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+    compression: gzip
+    tls:
+      insecure: false
+
 service:
   pipelines:
     traces:
       receivers: [ otlp ]
-      processors: [ batch ]
-      exporters: [ otlp/jaeger, debug ]
+      processors: [ batch, resource ]
+      exporters: [ otlp/jaeger, debug, otlp/coralogix-traces ]
     metrics:
       receivers: [ otlp ]
-      processors: [ batch ]
-      exporters: [ prometheus, debug ]
+      processors: [ batch, resource ]
+      exporters: [ prometheus, debug, otlp/coralogix-metrics ]
     logs:
       receivers: [ otlp ]
-      processors: [ batch ]
-      exporters: [ otlphttp, debug ]
+      processors: [ batch, resource ]
+      exporters: [ otlphttp, debug, otlp/coralogix-logs ]

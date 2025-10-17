@@ -65,5 +65,6 @@ func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput
 	}
 
 	c.telemetry.Metrics().AddCounter(ctx, "order_created_total", 1, nil)
+	c.telemetry.Logger().Info(ctx, "order_created", o11y.Field{Key: "id", Value: newOrder.ID.String()})
 	return dtos.NewOrderOutput(newOrder.ID.String(), newOrder.Status.String()), nil
 }
