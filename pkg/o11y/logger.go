@@ -2,9 +2,10 @@ package o11y
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"log"
 	"log/slog"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -27,15 +28,111 @@ type Logger interface {
 	Error(ctx context.Context, err error, msg string, fields ...Field)
 }
 
+const (
+	defaultLoggerShutdownTimeout = 10 * time.Second
+)
+
+// LoggerConfig holds configuration options for the logger
+type LoggerConfig struct {
+	endpoint       string
+	serviceName    string
+	resource       *resource.Resource
+	insecure       bool
+	tlsConfig      *tls.Config
+	registerGlobal bool
+}
+
+// LoggerOption is a function that configures a LoggerConfig
+type LoggerOption func(*LoggerConfig)
+
+// WithLoggerEndpoint sets the OTLP endpoint for the logger
+func WithLoggerEndpoint(endpoint string) LoggerOption {
+	return func(c *LoggerConfig) {
+		c.endpoint = endpoint
+	}
+}
+
+// WithLoggerServiceName sets the service name for the logger
+func WithLoggerServiceName(name string) LoggerOption {
+	return func(c *LoggerConfig) {
+		c.serviceName = name
+	}
+}
+
+// WithLoggerResource sets the resource for the logger
+func WithLoggerResource(res *resource.Resource) LoggerOption {
+	return func(c *LoggerConfig) {
+		c.resource = res
+	}
+}
+
+// WithLoggerInsecure enables insecure connection (not recommended for production)
+func WithLoggerInsecure() LoggerOption {
+	return func(c *LoggerConfig) {
+		c.insecure = true
+	}
+}
+
+// WithLoggerTLS sets custom TLS configuration
+func WithLoggerTLS(cfg *tls.Config) LoggerOption {
+	return func(c *LoggerConfig) {
+		c.tlsConfig = cfg
+	}
+}
+
+// WithLoggerGlobalRegistration enables/disables global logger provider registration
+func WithLoggerGlobalRegistration(register bool) LoggerOption {
+	return func(c *LoggerConfig) {
+		c.registerGlobal = register
+	}
+}
+
+func newLoggerConfig(opts ...LoggerOption) *LoggerConfig {
+	cfg := &LoggerConfig{
+		registerGlobal: true,
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	return cfg
+}
+
 type logger struct {
-	tracer         Tracer
 	slogger        *slog.Logger
-	mu             sync.RWMutex
 	loggerProvider *sdkLogger.LoggerProvider
 }
 
-func NewLogger(ctx context.Context, tracer Tracer, endpoint, serviceName string, resource *resource.Resource) (Logger, func(context.Context) error, error) {
-	loggerExporter, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(endpoint))
+// NewLogger creates a new logger with the given configuration
+// Deprecated: Use NewLoggerWithOptions instead for better control over TLS
+func NewLogger(ctx context.Context, tracer Tracer, endpoint, serviceName string, res *resource.Resource) (Logger, func(context.Context) error, error) {
+	return NewLoggerWithOptions(ctx,
+		WithLoggerEndpoint(endpoint),
+		WithLoggerServiceName(serviceName),
+		WithLoggerResource(res),
+		WithLoggerInsecure(), // Maintain backward compatibility
+	)
+}
+
+// NewLoggerWithOptions creates a new logger with functional options
+func NewLoggerWithOptions(ctx context.Context, opts ...LoggerOption) (Logger, func(context.Context) error, error) {
+	cfg := newLoggerConfig(opts...)
+
+	if cfg.endpoint == "" {
+		return nil, nil, fmt.Errorf("endpoint cannot be empty")
+	}
+	if cfg.serviceName == "" {
+		return nil, nil, fmt.Errorf("serviceName cannot be empty")
+	}
+	if cfg.resource == nil {
+		return nil, nil, fmt.Errorf("resource cannot be nil")
+	}
+
+	exporterOpts := []otlploghttp.Option{
+		otlploghttp.WithEndpointURL(cfg.endpoint),
+	}
+	exporterOpts = appendLoggerTLSOptions(exporterOpts, cfg)
+
+	loggerExporter, err := otlploghttp.New(ctx, exporterOpts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize logger exporter: %w", err)
 	}
@@ -43,19 +140,57 @@ func NewLogger(ctx context.Context, tracer Tracer, endpoint, serviceName string,
 	loggerProcessor := sdkLogger.NewBatchProcessor(loggerExporter)
 	loggerProvider := sdkLogger.NewLoggerProvider(
 		sdkLogger.WithProcessor(loggerProcessor),
-		sdkLogger.WithResource(resource),
+		sdkLogger.WithResource(cfg.resource),
 	)
-	global.SetLoggerProvider(loggerProvider)
-	slogger := otelslog.NewLogger(serviceName, otelslog.WithLoggerProvider(loggerProvider))
+	if loggerProvider == nil {
+		// Clean up exporter to prevent resource leak
+		if shutdownErr := loggerExporter.Shutdown(ctx); shutdownErr != nil {
+			log.Printf("logger: failed to shutdown exporter after provider creation failed: %v", shutdownErr)
+		}
+		return nil, nil, fmt.Errorf("failed to create logger provider")
+	}
 
-	shutdown := func(ctx context.Context) error {
-		if err := loggerProvider.Shutdown(ctx); err != nil {
-			return err
+	if cfg.registerGlobal {
+		global.SetLoggerProvider(loggerProvider)
+	}
+	slogger := otelslog.NewLogger(cfg.serviceName, otelslog.WithLoggerProvider(loggerProvider))
+
+	shutdown := createLoggerShutdown(loggerProvider)
+
+	return &logger{slogger: slogger, loggerProvider: loggerProvider}, shutdown, nil
+}
+
+func appendLoggerTLSOptions(opts []otlploghttp.Option, cfg *LoggerConfig) []otlploghttp.Option {
+	if cfg.insecure {
+		log.Printf("WARNING: logger using insecure connection to %s - not recommended for production", cfg.endpoint)
+		return append(opts, otlploghttp.WithInsecure())
+	}
+
+	if cfg.tlsConfig != nil {
+		return append(opts, otlploghttp.WithTLSClientConfig(cfg.tlsConfig))
+	}
+
+	// Uses system root CAs by default
+	return opts
+}
+
+func createLoggerShutdown(provider *sdkLogger.LoggerProvider) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, defaultLoggerShutdownTimeout)
+			defer cancel()
+		}
+
+		if err := provider.ForceFlush(ctx); err != nil {
+			log.Printf("logger: flush failed during shutdown: %v", err)
+		}
+
+		if err := provider.Shutdown(ctx); err != nil {
+			return fmt.Errorf("logger: shutdown failed: %w", err)
 		}
 		return nil
 	}
-
-	return &logger{tracer: tracer, slogger: slogger, loggerProvider: loggerProvider}, shutdown, nil
 }
 
 func (l *logger) Debug(ctx context.Context, msg string, fields ...Field) {
@@ -75,9 +210,14 @@ func (l *logger) Error(ctx context.Context, err error, msg string, fields ...Fie
 }
 
 func (l *logger) log(ctx context.Context, level slog.Level, msg string, err error, fields ...Field) {
+	// Handle nil context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	span := trace.SpanFromContext(ctx)
 	sc := span.SpanContext()
-	attrs := make([]slog.Attr, 0, len(fields)+3)
+	attrs := make([]slog.Attr, 0, len(fields)+5)
 	for _, f := range fields {
 		attrs = append(attrs, slog.Any(f.Key, f.Value))
 	}
@@ -94,7 +234,6 @@ func (l *logger) log(ctx context.Context, level slog.Level, msg string, err erro
 	attrs = append(attrs, slog.String("level", level.String()))
 	attrs = append(attrs, slog.Time("ts", time.Now()))
 
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	// slog.Logger is already thread-safe, no need for mutex
 	l.slogger.LogAttrs(ctx, level, msg, attrs...)
 }

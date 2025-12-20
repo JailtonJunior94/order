@@ -13,6 +13,8 @@ type Telemetry interface {
 	Tracer() Tracer
 	Metrics() Metrics
 	Logger() Logger
+	Shutdown(ctx context.Context) error
+	IsClosed() bool
 }
 
 func NewServiceResource(ctx context.Context, name, version, environment string) (*resource.Resource, error) {
