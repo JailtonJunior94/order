@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -20,8 +22,12 @@ const (
 	// DefaultMaxMetricInstruments is the default maximum number of metric instruments allowed
 	DefaultMaxMetricInstruments = 1000
 	// DefaultMetricExportInterval is the default interval for exporting metrics
-	DefaultMetricExportInterval  = 2 * time.Second
+	DefaultMetricExportInterval   = 2 * time.Second
 	defaultMetricsShutdownTimeout = 10 * time.Second
+	// DefaultMaxLabelsPerMetric is the maximum number of labels allowed per metric call
+	DefaultMaxLabelsPerMetric = 10
+	// DefaultMaxLabelValueLength is the maximum length of a label value
+	DefaultMaxLabelValueLength = 256
 )
 
 type Metrics interface {
@@ -29,15 +35,56 @@ type Metrics interface {
 	RecordHistogram(ctx context.Context, name string, v float64, labels ...any)
 }
 
+// IMPORTANT: Metric Naming Best Practices
+//
+// ⚠️  WARNING: NEVER use dynamic values in metric names!
+//
+// Metric instruments (counters, histograms) are cached indefinitely and NEVER cleaned up.
+// Creating metrics with dynamic names will cause memory leaks.
+//
+// BAD Examples (will cause memory leak):
+//
+//	for userID := range users {
+//	    // ❌ DON'T: Creates a new counter for each user
+//	    metrics.AddCounter(ctx, fmt.Sprintf("user_%d_requests", userID), 1)
+//	}
+//
+//	// ❌ DON'T: Creates a new counter for each request
+//	metrics.AddCounter(ctx, fmt.Sprintf("requests_%s", timestamp), 1)
+//
+// GOOD Examples (use labels for dynamic values):
+//
+//	// ✅ DO: Use labels for dynamic dimensions
+//	metrics.AddCounter(ctx, "user_requests", 1, "user_id", userID)
+//	metrics.AddCounter(ctx, "http_requests_total", 1, "method", "GET", "status", 200)
+//
+// The library enforces a limit of 1000 instruments (configurable via WithMetricsMaxInstruments).
+// Once this limit is reached, new metric creation will fail and be logged.
+//
+// Metric names should be:
+// - Static and known at compile time
+// - Descriptive of what is being measured
+// - Following snake_case convention
+// - Using labels for all dynamic dimensions
+
+// MetricsErrorCallback is called when a metrics operation fails
+type MetricsErrorCallback func(err error)
+
 // MetricsConfig holds configuration options for metrics
 type MetricsConfig struct {
-	endpoint       string
-	serviceName    string
-	resource       *resource.Resource
-	insecure       bool
-	tlsConfig      *tls.Config
-	exportInterval time.Duration
-	maxInstruments int
+	endpoint           string
+	serviceName        string
+	resource           *resource.Resource
+	insecure           bool
+	tlsConfig          *tls.Config
+	exportInterval     time.Duration
+	maxInstruments     int
+	maxLabelsPerMetric int
+	maxLabelValueLen   int
+	onError            MetricsErrorCallback
+	sensitiveKeys      []string
+	redactSensitive    bool
+	strictTLS          bool
 }
 
 // MetricsOption is a function that configures a MetricsConfig
@@ -92,10 +139,64 @@ func WithMetricsMaxInstruments(max int) MetricsOption {
 	}
 }
 
+// WithMetricsMaxLabelsPerMetric sets the maximum number of labels per metric call.
+// Labels exceeding this limit will be truncated to prevent cardinality explosion.
+func WithMetricsMaxLabelsPerMetric(max int) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.maxLabelsPerMetric = max
+	}
+}
+
+// WithMetricsMaxLabelValueLength sets the maximum length for label values.
+// Values exceeding this length will be truncated.
+func WithMetricsMaxLabelValueLength(max int) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.maxLabelValueLen = max
+	}
+}
+
+// WithMetricsOnError sets a callback function that is called when a metrics operation fails.
+// This allows consumers to be notified of metric errors instead of them being silently logged.
+func WithMetricsOnError(callback MetricsErrorCallback) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.onError = callback
+	}
+}
+
+// WithMetricsSensitiveFieldRedaction enables automatic redaction of sensitive fields in metric labels.
+// When enabled, labels with keys matching sensitive patterns will have their values replaced with [REDACTED].
+// This is enabled by default for security.
+func WithMetricsSensitiveFieldRedaction(enabled bool) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.redactSensitive = enabled
+	}
+}
+
+// WithMetricsSensitiveKeys sets custom sensitive key patterns.
+// These patterns are matched case-insensitively against label keys.
+// If not set, DefaultSensitiveKeys will be used when redaction is enabled.
+func WithMetricsSensitiveKeys(keys []string) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.sensitiveKeys = keys
+	}
+}
+
+// WithMetricsStrictTLS enables strict TLS validation mode.
+// When enabled, insecure TLS configurations (InsecureSkipVerify, TLS < 1.2) will cause errors instead of warnings.
+func WithMetricsStrictTLS(strict bool) MetricsOption {
+	return func(c *MetricsConfig) {
+		c.strictTLS = strict
+	}
+}
+
 func newMetricsConfig(opts ...MetricsOption) *MetricsConfig {
 	cfg := &MetricsConfig{
-		exportInterval: DefaultMetricExportInterval,
-		maxInstruments: DefaultMaxMetricInstruments,
+		exportInterval:     DefaultMetricExportInterval,
+		maxInstruments:     DefaultMaxMetricInstruments,
+		maxLabelsPerMetric: DefaultMaxLabelsPerMetric,
+		maxLabelValueLen:   DefaultMaxLabelValueLength,
+		redactSensitive:    true,
+		sensitiveKeys:      DefaultSensitiveKeys,
 	}
 	for _, opt := range opts {
 		opt(cfg)
@@ -104,21 +205,27 @@ func newMetricsConfig(opts ...MetricsOption) *MetricsConfig {
 }
 
 type metrics struct {
-	meter          otelmetric.Meter
-	mu             sync.RWMutex
-	counters       map[string]otelmetric.Int64Counter
-	histograms     map[string]otelmetric.Float64Histogram
-	maxInstruments int
+	meter              otelmetric.Meter
+	mu                 sync.RWMutex
+	counters           map[string]otelmetric.Int64Counter
+	histograms         map[string]otelmetric.Float64Histogram
+	maxInstruments     int
+	maxLabelsPerMetric int
+	maxLabelValueLen   int
+	onError            MetricsErrorCallback
+	sensitiveKeys      []string
+	redactSensitive    bool
+	closed             *atomic.Bool
 }
 
 // NewMetrics creates a new metrics instance with the given configuration
-// Deprecated: Use NewMetricsWithOptions instead for better control over TLS and limits
+// Deprecated: Use NewMetricsWithOptions instead for better control over TLS and limits.
+// This function requires TLS by default. For insecure connections, use NewMetricsWithOptions with WithMetricsInsecure().
 func NewMetrics(ctx context.Context, endpoint, serviceName string, res *resource.Resource) (Metrics, func(context.Context) error, error) {
 	return NewMetricsWithOptions(ctx,
 		WithMetricsEndpoint(endpoint),
 		WithMetricsServiceName(serviceName),
 		WithMetricsResource(res),
-		WithMetricsInsecure(), // Maintain backward compatibility
 	)
 }
 
@@ -129,6 +236,7 @@ func NewMetricsWithOptions(ctx context.Context, opts ...MetricsOption) (Metrics,
 	if cfg.endpoint == "" {
 		return nil, nil, fmt.Errorf("endpoint cannot be empty")
 	}
+	validateEndpoint(cfg.endpoint, "metrics")
 	if cfg.serviceName == "" {
 		return nil, nil, fmt.Errorf("serviceName cannot be empty")
 	}
@@ -141,11 +249,20 @@ func NewMetricsWithOptions(ctx context.Context, opts ...MetricsOption) (Metrics,
 	if cfg.exportInterval <= 0 {
 		return nil, nil, fmt.Errorf("exportInterval must be greater than 0")
 	}
+	if cfg.maxLabelsPerMetric <= 0 {
+		return nil, nil, fmt.Errorf("maxLabelsPerMetric must be greater than 0")
+	}
+	if cfg.maxLabelValueLen < 4 {
+		return nil, nil, fmt.Errorf("maxLabelValueLen must be at least 4")
+	}
 
 	exporterOpts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(cfg.endpoint),
 	}
-	exporterOpts = appendMetricsTLSOptions(exporterOpts, cfg)
+	exporterOpts, err := appendMetricsTLSOptions(exporterOpts, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	metricExporter, err := otlpmetricgrpc.New(ctx, exporterOpts...)
 	if err != nil {
@@ -167,31 +284,44 @@ func NewMetricsWithOptions(ctx context.Context, opts ...MetricsOption) (Metrics,
 		return nil, nil, fmt.Errorf("failed to create meter provider")
 	}
 
-	shutdown := createMetricsShutdown(meterProvider)
+	closed := &atomic.Bool{}
+	shutdown := createMetricsShutdown(meterProvider, closed)
 
 	return &metrics{
-		meter:          meterProvider.Meter(cfg.serviceName),
-		counters:       make(map[string]otelmetric.Int64Counter),
-		histograms:     make(map[string]otelmetric.Float64Histogram),
-		maxInstruments: cfg.maxInstruments,
+		meter:              meterProvider.Meter(cfg.serviceName),
+		counters:           make(map[string]otelmetric.Int64Counter),
+		histograms:         make(map[string]otelmetric.Float64Histogram),
+		maxInstruments:     cfg.maxInstruments,
+		maxLabelsPerMetric: cfg.maxLabelsPerMetric,
+		maxLabelValueLen:   cfg.maxLabelValueLen,
+		onError:            cfg.onError,
+		sensitiveKeys:      cfg.sensitiveKeys,
+		redactSensitive:    cfg.redactSensitive,
+		closed:             closed,
 	}, shutdown, nil
 }
 
-func appendMetricsTLSOptions(opts []otlpmetricgrpc.Option, cfg *MetricsConfig) []otlpmetricgrpc.Option {
+func appendMetricsTLSOptions(opts []otlpmetricgrpc.Option, cfg *MetricsConfig) ([]otlpmetricgrpc.Option, error) {
 	if cfg.insecure {
-		log.Printf("WARNING: metrics using insecure connection to %s - not recommended for production", cfg.endpoint)
-		return append(opts, otlpmetricgrpc.WithInsecure())
+		if cfg.strictTLS {
+			return nil, fmt.Errorf("metrics: insecure connection not allowed in strict TLS mode")
+		}
+		log.Printf("SECURITY WARNING: metrics using insecure connection to %s - not recommended for production", cfg.endpoint)
+		return append(opts, otlpmetricgrpc.WithInsecure()), nil
 	}
 
 	if cfg.tlsConfig != nil {
-		return append(opts, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(cfg.tlsConfig)))
+		if err := validateTLSConfig(cfg.tlsConfig, "metrics", cfg.strictTLS); err != nil {
+			return nil, err
+		}
+		return append(opts, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(cfg.tlsConfig))), nil
 	}
 
 	// Uses system root CAs by default
-	return opts
+	return opts, nil
 }
 
-func createMetricsShutdown(provider *metric.MeterProvider) func(context.Context) error {
+func createMetricsShutdown(provider *metric.MeterProvider, closed *atomic.Bool) func(context.Context) error {
 	return func(ctx context.Context) error {
 		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 			var cancel context.CancelFunc
@@ -206,12 +336,14 @@ func createMetricsShutdown(provider *metric.MeterProvider) func(context.Context)
 		if err := provider.Shutdown(ctx); err != nil {
 			return fmt.Errorf("metrics: shutdown failed: %w", err)
 		}
+
+		// Mark metrics as closed to invalidate old references
+		closed.Store(true)
 		return nil
 	}
 }
 
 func (m *metrics) getOrCreateCounter(name string) (otelmetric.Int64Counter, error) {
-	// Tentar read lock primeiro (caso comum - instrumento existe)
 	m.mu.RLock()
 	if ctr, ok := m.counters[name]; ok {
 		m.mu.RUnlock()
@@ -219,22 +351,18 @@ func (m *metrics) getOrCreateCounter(name string) (otelmetric.Int64Counter, erro
 	}
 	m.mu.RUnlock()
 
-	// Adquirir write lock para criar
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Double-check - outro goroutine pode ter criado
 	if ctr, ok := m.counters[name]; ok {
 		return ctr, nil
 	}
 
-	// Check map size limit to prevent memory exhaustion
 	totalInstruments := len(m.counters) + len(m.histograms)
 	if totalInstruments >= m.maxInstruments {
 		return nil, fmt.Errorf("metrics: maximum instrument limit (%d) reached, rejecting new counter %q", m.maxInstruments, name)
 	}
 
-	// Criar novo instrumento
 	ctr, err := m.meter.Int64Counter(name)
 	if err != nil {
 		return nil, err
@@ -244,17 +372,32 @@ func (m *metrics) getOrCreateCounter(name string) (otelmetric.Int64Counter, erro
 }
 
 func (m *metrics) AddCounter(ctx context.Context, name string, v int64, labels ...any) {
+	// Handle nil context to prevent panic
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Do nothing if metrics has been shut down
+	if m.closed != nil && m.closed.Load() {
+		return
+	}
 	ctr, err := m.getOrCreateCounter(name)
 	if err != nil {
-		log.Printf("metrics: failed to create counter %q: %v", name, err)
+		m.handleError(err)
 		return
 	}
 	attrs := m.parseLabels(labels...)
 	ctr.Add(ctx, v, otelmetric.WithAttributes(attrs...))
 }
 
+// handleError logs the error and calls the error callback if configured
+func (m *metrics) handleError(err error) {
+	log.Printf("metrics: %v", err)
+	if m.onError != nil {
+		m.onError(err)
+	}
+}
+
 func (m *metrics) getOrCreateHistogram(name string) (otelmetric.Float64Histogram, error) {
-	// Tentar read lock primeiro (caso comum - instrumento existe)
 	m.mu.RLock()
 	if h, ok := m.histograms[name]; ok {
 		m.mu.RUnlock()
@@ -262,22 +405,18 @@ func (m *metrics) getOrCreateHistogram(name string) (otelmetric.Float64Histogram
 	}
 	m.mu.RUnlock()
 
-	// Adquirir write lock para criar
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Double-check - outro goroutine pode ter criado
 	if h, ok := m.histograms[name]; ok {
 		return h, nil
 	}
 
-	// Check map size limit to prevent memory exhaustion
 	totalInstruments := len(m.counters) + len(m.histograms)
 	if totalInstruments >= m.maxInstruments {
 		return nil, fmt.Errorf("metrics: maximum instrument limit (%d) reached, rejecting new histogram %q", m.maxInstruments, name)
 	}
 
-	// Criar novo instrumento
 	h, err := m.meter.Float64Histogram(name)
 	if err != nil {
 		return nil, err
@@ -287,9 +426,17 @@ func (m *metrics) getOrCreateHistogram(name string) (otelmetric.Float64Histogram
 }
 
 func (m *metrics) RecordHistogram(ctx context.Context, name string, v float64, labels ...any) {
+	// Handle nil context to prevent panic
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Do nothing if metrics has been shut down
+	if m.closed != nil && m.closed.Load() {
+		return
+	}
 	h, err := m.getOrCreateHistogram(name)
 	if err != nil {
-		log.Printf("metrics: failed to create histogram %q: %v", name, err)
+		m.handleError(err)
 		return
 	}
 	attrs := m.parseLabels(labels...)
@@ -301,9 +448,23 @@ func (m *metrics) parseLabels(labels ...any) []attribute.KeyValue {
 		return nil
 	}
 
-	// Warn about odd number of labels (missing value for last key)
+	// Reject odd number of labels (missing value for last key)
 	if len(labels)%2 != 0 {
-		log.Printf("metrics: odd number of labels provided (%d), last key will be ignored", len(labels))
+		err := fmt.Errorf("metrics: invalid labels - odd count %d (each key must have a value)", len(labels))
+		m.handleError(err)
+		// Return empty to avoid processing invalid data
+		return nil
+	}
+
+	// Apply cardinality protection - limit number of labels
+	maxPairs := m.maxLabelsPerMetric
+	if maxPairs <= 0 {
+		maxPairs = DefaultMaxLabelsPerMetric
+	}
+	labelPairs := len(labels) / 2
+	if labelPairs > maxPairs {
+		log.Printf("metrics: too many labels (%d), truncating to %d to prevent cardinality explosion", labelPairs, maxPairs)
+		labels = labels[:maxPairs*2]
 	}
 
 	kv := make([]attribute.KeyValue, 0, len(labels)/2)
@@ -314,22 +475,63 @@ func (m *metrics) parseLabels(labels ...any) []attribute.KeyValue {
 			continue
 		}
 		val := labels[i+1]
-		switch tv := val.(type) {
-		case string:
-			kv = append(kv, attribute.String(k, tv))
-		case int64:
-			kv = append(kv, attribute.Int64(k, tv))
-		case int:
-			kv = append(kv, attribute.Int(k, tv))
-		case float64:
-			kv = append(kv, attribute.Float64(k, tv))
-		case bool:
-			kv = append(kv, attribute.Bool(k, tv))
-		case nil:
-			kv = append(kv, attribute.String(k, "<nil>"))
-		default:
-			kv = append(kv, attribute.String(k, fmt.Sprintf("%v", tv)))
-		}
+		kv = append(kv, m.createAttribute(k, val))
 	}
 	return kv
+}
+
+// createAttribute creates an attribute with value length protection and sensitive field redaction
+func (m *metrics) createAttribute(key string, val any) attribute.KeyValue {
+	// Check for sensitive keys first
+	if m.redactSensitive && m.isSensitiveKey(key) {
+		return attribute.String(key, redactedValue)
+	}
+
+	maxLen := m.maxLabelValueLen
+	if maxLen <= 0 {
+		maxLen = DefaultMaxLabelValueLength
+	}
+
+	switch tv := val.(type) {
+	case string:
+		return attribute.String(key, m.truncateString(tv, maxLen))
+	case int64:
+		return attribute.Int64(key, tv)
+	case int:
+		return attribute.Int(key, tv)
+	case float64:
+		return attribute.Float64(key, tv)
+	case bool:
+		return attribute.Bool(key, tv)
+	case nil:
+		return attribute.String(key, "<nil>")
+	default:
+		s := fmt.Sprintf("%v", tv)
+		return attribute.String(key, m.truncateString(s, maxLen))
+	}
+}
+
+// isSensitiveKey checks if a label key matches any sensitive key pattern
+func (m *metrics) isSensitiveKey(key string) bool {
+	keyLower := strings.ToLower(key)
+	for _, sensitive := range m.sensitiveKeys {
+		if strings.Contains(keyLower, strings.ToLower(sensitive)) {
+			return true
+		}
+	}
+	return false
+}
+
+// truncateString truncates a string to maxLen characters
+func (m *metrics) truncateString(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen < 4 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }

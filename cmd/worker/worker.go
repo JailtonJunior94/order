@@ -24,7 +24,7 @@ func (w *worker) Run() {
 	ioc := bundle.NewContainer(ctx)
 
 	/* Observability */
-	resource, err := o11y.NewServiceResource(ctx, ioc.Config.O11yConfig.OrderAPI, ioc.Config.O11yConfig.ServiceVersion, ioc.Config.Environment)
+	resource, err := o11y.NewServiceResource(ctx, ioc.Config.O11yConfig.OrderWorker, ioc.Config.O11yConfig.ServiceVersion, ioc.Config.Environment)
 	if err != nil {
 		log.Fatalf("failed to create resource: %v", err)
 	}

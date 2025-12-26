@@ -5,6 +5,11 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
+	"slices"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -44,8 +49,8 @@ type Attribute struct {
 }
 
 const (
-	defaultTracerBatchTimeout   = 5 * time.Second
-	defaultTracerMaxExportBatch = 512
+	defaultTracerBatchTimeout    = 5 * time.Second
+	defaultTracerMaxExportBatch  = 512
 	defaultTracerShutdownTimeout = 10 * time.Second
 )
 
@@ -59,6 +64,10 @@ type TracerConfig struct {
 	registerGlobal  bool
 	batchTimeout    time.Duration
 	maxExportBatch  int
+	sampler         sdktrace.Sampler
+	sensitiveKeys   []string
+	redactSensitive bool
+	strictTLS       bool
 }
 
 // TracerOption is a function that configures a TracerConfig
@@ -120,11 +129,66 @@ func WithTracerMaxExportBatch(size int) TracerOption {
 	}
 }
 
+// WithTracerSampler sets the sampling strategy for the tracer.
+// Deprecated: Use WithTracerSamplingConfig instead to avoid exposing OpenTelemetry types.
+// Common samplers include:
+//   - sdktrace.AlwaysSample() - sample all traces (default, not recommended for high-volume production)
+//   - sdktrace.NeverSample() - sample no traces
+//   - sdktrace.TraceIDRatioBased(0.1) - sample 10% of traces
+//   - sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1)) - respect parent sampling decision
+func WithTracerSampler(sampler sdktrace.Sampler) TracerOption {
+	return func(c *TracerConfig) {
+		c.sampler = sampler
+	}
+}
+
+// WithTracerSamplingConfig sets the sampling strategy using the abstracted SamplingConfig.
+// This is the recommended way to configure sampling as it doesn't expose OpenTelemetry types.
+// Example:
+//
+//	WithTracerSamplingConfig(o11y.SamplingConfig{
+//	    Strategy: o11y.SamplingParentBased,
+//	    Ratio:    0.1, // Sample 10% of traces
+//	})
+func WithTracerSamplingConfig(cfg SamplingConfig) TracerOption {
+	return func(c *TracerConfig) {
+		c.sampler = convertSamplingConfig(cfg)
+	}
+}
+
+// WithTracerSensitiveFieldRedaction enables automatic redaction of sensitive fields in span attributes.
+// When enabled, fields with keys matching sensitive patterns will have their values replaced with [REDACTED].
+// This is enabled by default for security.
+func WithTracerSensitiveFieldRedaction(enabled bool) TracerOption {
+	return func(c *TracerConfig) {
+		c.redactSensitive = enabled
+	}
+}
+
+// WithTracerSensitiveKeys sets custom sensitive key patterns.
+// These patterns are matched case-insensitively against attribute keys.
+// If not set, DefaultSensitiveKeys will be used when redaction is enabled.
+func WithTracerSensitiveKeys(keys []string) TracerOption {
+	return func(c *TracerConfig) {
+		c.sensitiveKeys = keys
+	}
+}
+
+// WithTracerStrictTLS enables strict TLS validation mode.
+// When enabled, insecure TLS configurations (InsecureSkipVerify, TLS < 1.2) will cause errors instead of warnings.
+func WithTracerStrictTLS(strict bool) TracerOption {
+	return func(c *TracerConfig) {
+		c.strictTLS = strict
+	}
+}
+
 func newTracerConfig(opts ...TracerOption) *TracerConfig {
 	cfg := &TracerConfig{
-		registerGlobal: true,
-		batchTimeout:   defaultTracerBatchTimeout,
-		maxExportBatch: defaultTracerMaxExportBatch,
+		registerGlobal:  true,
+		batchTimeout:    defaultTracerBatchTimeout,
+		maxExportBatch:  defaultTracerMaxExportBatch,
+		redactSensitive: true,
+		sensitiveKeys:   DefaultSensitiveKeys,
 	}
 	for _, opt := range opts {
 		opt(cfg)
@@ -133,21 +197,26 @@ func newTracerConfig(opts ...TracerOption) *TracerConfig {
 }
 
 type tracer struct {
-	tracer trace.Tracer
+	tracer          trace.Tracer
+	sensitiveKeys   []string
+	redactSensitive bool
+	closed          *atomic.Bool
 }
 
 type otelSpan struct {
-	span trace.Span
+	span            trace.Span
+	sensitiveKeys   []string
+	redactSensitive bool
 }
 
 // NewTracer creates a new tracer with the given configuration
-// Deprecated: Use NewTracerWithOptions instead for better control over TLS and batching
+// Deprecated: Use NewTracerWithOptions instead for better control over TLS and batching.
+// This function requires TLS by default. For insecure connections, use NewTracerWithOptions with WithTracerInsecure().
 func NewTracer(ctx context.Context, endpoint, serviceName string, res *resource.Resource) (Tracer, func(context.Context) error, error) {
 	return NewTracerWithOptions(ctx,
 		WithTracerEndpoint(endpoint),
 		WithTracerServiceName(serviceName),
 		WithTracerResource(res),
-		WithTracerInsecure(), // Maintain backward compatibility
 	)
 }
 
@@ -158,6 +227,7 @@ func NewTracerWithOptions(ctx context.Context, opts ...TracerOption) (Tracer, fu
 	if cfg.endpoint == "" {
 		return nil, nil, fmt.Errorf("endpoint cannot be empty")
 	}
+	validateEndpoint(cfg.endpoint, "tracer")
 	if cfg.serviceName == "" {
 		return nil, nil, fmt.Errorf("serviceName cannot be empty")
 	}
@@ -174,20 +244,28 @@ func NewTracerWithOptions(ctx context.Context, opts ...TracerOption) (Tracer, fu
 	exporterOpts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(cfg.endpoint),
 	}
-	exporterOpts = appendTracerTLSOptions(exporterOpts, cfg)
+	exporterOpts, err := appendTracerTLSOptions(exporterOpts, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	traceExporter, err := otlptracegrpc.New(ctx, exporterOpts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize trace exporter grpc: %w", err)
 	}
 
-	tracerProvider := sdktrace.NewTracerProvider(
+	providerOpts := []sdktrace.TracerProviderOption{
 		sdktrace.WithResource(cfg.resource),
 		sdktrace.WithBatcher(traceExporter,
 			sdktrace.WithBatchTimeout(cfg.batchTimeout),
 			sdktrace.WithMaxExportBatchSize(cfg.maxExportBatch),
 		),
-	)
+	}
+	if cfg.sampler != nil {
+		providerOpts = append(providerOpts, sdktrace.WithSampler(cfg.sampler))
+	}
+
+	tracerProvider := sdktrace.NewTracerProvider(providerOpts...)
 	if tracerProvider == nil {
 		// Clean up exporter to prevent resource leak
 		if shutdownErr := traceExporter.Shutdown(ctx); shutdownErr != nil {
@@ -201,26 +279,108 @@ func NewTracerWithOptions(ctx context.Context, opts ...TracerOption) (Tracer, fu
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	}
 
-	shutdown := createTracerShutdown(tracerProvider)
+	closed := &atomic.Bool{}
+	shutdown := createTracerShutdown(tracerProvider, closed)
 
-	return &tracer{tracer: tracerProvider.Tracer(cfg.serviceName)}, shutdown, nil
+	return &tracer{
+		tracer:          tracerProvider.Tracer(cfg.serviceName),
+		sensitiveKeys:   cfg.sensitiveKeys,
+		redactSensitive: cfg.redactSensitive,
+		closed:          closed,
+	}, shutdown, nil
 }
 
-func appendTracerTLSOptions(opts []otlptracegrpc.Option, cfg *TracerConfig) []otlptracegrpc.Option {
+func appendTracerTLSOptions(opts []otlptracegrpc.Option, cfg *TracerConfig) ([]otlptracegrpc.Option, error) {
 	if cfg.insecure {
-		log.Printf("WARNING: tracer using insecure connection to %s - not recommended for production", cfg.endpoint)
-		return append(opts, otlptracegrpc.WithInsecure())
+		if cfg.strictTLS {
+			return nil, fmt.Errorf("tracer: insecure connection not allowed in strict TLS mode")
+		}
+		log.Printf("SECURITY WARNING: tracer using insecure connection to %s - not recommended for production", cfg.endpoint)
+		return append(opts, otlptracegrpc.WithInsecure()), nil
 	}
 
 	if cfg.tlsConfig != nil {
-		return append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(cfg.tlsConfig)))
+		if err := validateTLSConfig(cfg.tlsConfig, "tracer", cfg.strictTLS); err != nil {
+			return nil, err
+		}
+		return append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(cfg.tlsConfig))), nil
 	}
 
 	// Uses system root CAs by default
-	return opts
+	return opts, nil
 }
 
-func createTracerShutdown(provider *sdktrace.TracerProvider) func(context.Context) error {
+// validateTLSConfig checks for insecure TLS configurations.
+// In strict mode, it returns an error; otherwise, it logs warnings.
+func validateTLSConfig(cfg *tls.Config, component string, strict bool) error {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.InsecureSkipVerify {
+		if strict {
+			return fmt.Errorf("%s: InsecureSkipVerify=true not allowed in strict TLS mode", component)
+		}
+		log.Printf("SECURITY WARNING: %s TLS InsecureSkipVerify=true disables certificate validation - MITM attacks possible", component)
+	}
+	if cfg.MinVersion != 0 && cfg.MinVersion < tls.VersionTLS12 {
+		if strict {
+			return fmt.Errorf("%s: TLS version < 1.2 not allowed in strict TLS mode", component)
+		}
+		log.Printf("SECURITY WARNING: %s TLS version < 1.2 is deprecated and may be insecure", component)
+	}
+	return nil
+}
+
+// validateEndpoint validates the endpoint URL for security concerns.
+// It warns about potentially dangerous endpoints like metadata services or localhost.
+func validateEndpoint(endpoint, component string) {
+	// Try to parse as URL first
+	host := endpoint
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		host = u.Host
+	}
+
+	// Strip port if present
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+
+	// Check for internal/dangerous addresses
+	if isInternalAddress(host) {
+		log.Printf("SECURITY WARNING: %s endpoint %q appears to be internal - ensure this is intentional", component, endpoint)
+	}
+}
+
+// isInternalAddress checks if an address is internal/localhost/metadata service
+func isInternalAddress(host string) bool {
+	hostLower := strings.ToLower(host)
+
+	// Check localhost variants
+	if hostLower == "localhost" || hostLower == "127.0.0.1" || hostLower == "::1" {
+		return true
+	}
+
+	// Check cloud metadata services
+	metadataAddresses := []string{
+		"169.254.169.254", // AWS/GCP/Azure metadata
+		"metadata.google.internal",
+		"metadata",
+	}
+	if slices.Contains(metadataAddresses, hostLower) {
+		return true
+	}
+
+	// Check private IP ranges (basic check)
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return true
+		}
+	}
+
+	return false
+}
+
+func createTracerShutdown(provider *sdktrace.TracerProvider, closed *atomic.Bool) func(context.Context) error {
 	return func(ctx context.Context) error {
 		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 			var cancel context.CancelFunc
@@ -235,19 +395,40 @@ func createTracerShutdown(provider *sdktrace.TracerProvider) func(context.Contex
 		if err := provider.Shutdown(ctx); err != nil {
 			return fmt.Errorf("tracer: shutdown failed: %w", err)
 		}
+
+		// Mark tracer as closed to invalidate old references
+		closed.Store(true)
 		return nil
 	}
 }
 
 func (t *tracer) Start(ctx context.Context, name string, attrs ...Attribute) (context.Context, Span) {
-	ctx, span := t.tracer.Start(ctx, name, trace.WithAttributes(convertAttrs(attrs)...))
-	return ctx, &otelSpan{span: span}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Return noop span if tracer has been shut down
+	if t.closed != nil && t.closed.Load() {
+		return ctx, noopSpan{}
+	}
+	ctx, span := t.tracer.Start(ctx, name, trace.WithAttributes(convertAttrs(attrs, t.sensitiveKeys, t.redactSensitive)...))
+	return ctx, &otelSpan{
+		span:            span,
+		sensitiveKeys:   t.sensitiveKeys,
+		redactSensitive: t.redactSensitive,
+	}
 }
 
 func (t *tracer) WithAttributes(ctx context.Context, attrs ...Attribute) {
+	if ctx == nil {
+		return
+	}
+	// Do nothing if tracer has been shut down
+	if t.closed != nil && t.closed.Load() {
+		return
+	}
 	span := trace.SpanFromContext(ctx)
-	if span != nil && span.SpanContext().IsValid() {
-		span.SetAttributes(convertAttrs(attrs)...)
+	if span.SpanContext().IsValid() {
+		span.SetAttributes(convertAttrs(attrs, t.sensitiveKeys, t.redactSensitive)...)
 	}
 }
 
@@ -262,14 +443,14 @@ func (s *otelSpan) SetAttributes(attrs ...Attribute) {
 	if s == nil || s.span == nil {
 		return
 	}
-	s.span.SetAttributes(convertAttrs(attrs)...)
+	s.span.SetAttributes(convertAttrs(attrs, s.sensitiveKeys, s.redactSensitive)...)
 }
 
 func (s *otelSpan) AddEvent(name string, attrs ...Attribute) {
 	if s == nil || s.span == nil {
 		return
 	}
-	s.span.AddEvent(name, trace.WithAttributes(convertAttrs(attrs)...))
+	s.span.AddEvent(name, trace.WithAttributes(convertAttrs(attrs, s.sensitiveKeys, s.redactSensitive)...))
 }
 
 var statusMap = map[SpanStatus]codes.Code{
@@ -289,13 +470,17 @@ func (s *otelSpan) SetStatus(status SpanStatus, msg string) {
 	s.span.SetStatus(codes.Unset, msg)
 }
 
-func convertAttrs(attrs []Attribute) []attribute.KeyValue {
+func convertAttrs(attrs []Attribute, sensitiveKeys []string, redact bool) []attribute.KeyValue {
 	if len(attrs) == 0 {
 		return nil
 	}
 
 	kv := make([]attribute.KeyValue, 0, len(attrs))
 	for _, a := range attrs {
+		if redact && isSensitiveKey(a.Key, sensitiveKeys) {
+			kv = append(kv, attribute.String(a.Key, redactedValue))
+			continue
+		}
 		switch v := a.Value.(type) {
 		case string:
 			kv = append(kv, attribute.String(a.Key, v))
@@ -322,13 +507,40 @@ func convertAttrs(attrs []Attribute) []attribute.KeyValue {
 		case []bool:
 			kv = append(kv, attribute.BoolSlice(a.Key, v))
 		case fmt.Stringer:
-			kv = append(kv, attribute.String(a.Key, v.String()))
+			s := v.String()
+			kv = append(kv, attribute.String(a.Key, truncateAttrValue(s)))
 		case nil:
 			kv = append(kv, attribute.String(a.Key, "<nil>"))
 		default:
-			log.Printf("o11y: unsupported attribute type %T for key %q, using fmt.Sprintf", v, a.Key)
-			kv = append(kv, attribute.String(a.Key, fmt.Sprintf("%+v", v)))
+			// Limit size of string representation to prevent memory issues
+			s := fmt.Sprintf("%+v", v)
+			const maxAttrSize = 2048
+			if len(s) > maxAttrSize {
+				s = s[:maxAttrSize-3] + "..."
+				log.Printf("o11y: attribute %q truncated (type %T value too large: %d bytes)", a.Key, v, len(s))
+			}
+			kv = append(kv, attribute.String(a.Key, s))
 		}
 	}
 	return kv
+}
+
+// truncateAttrValue truncates attribute values to prevent excessive memory usage
+func truncateAttrValue(s string) string {
+	const maxAttrSize = 2048
+	if len(s) > maxAttrSize {
+		return s[:maxAttrSize-3] + "..."
+	}
+	return s
+}
+
+// isSensitiveKey checks if a field key matches any sensitive key pattern
+func isSensitiveKey(key string, sensitiveKeys []string) bool {
+	keyLower := strings.ToLower(key)
+	for _, sensitive := range sensitiveKeys {
+		if strings.Contains(keyLower, strings.ToLower(sensitive)) {
+			return true
+		}
+	}
+	return false
 }
