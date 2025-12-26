@@ -14,61 +14,97 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
+  # Processor para adicionar atributos do Coralogix
   resource:
     attributes:
     - key: cx.application.name
-      value: "orders"
+      value: ${env:CORALOGIX_APP_NAME}
       action: upsert
     - key: cx.subsystem.name
-      value: "backend"
+      from_attribute: service.name
+      action: upsert
+    - key: deployment.environment
+      value: ${env:ENVIRONMENT}
+      action: upsert
+
+  # Processor para transformar atributos e enriquecer dados
+  attributes:
+    actions:
+    - key: service.namespace
+      value: "orders"
       action: upsert
 
 exporters:
   debug:
+    verbosity: detailed
+
   prometheus:
     endpoint: 0.0.0.0:8889
+
   otlp/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
+
   otlphttp:
     endpoint: http://loki:3100/otlp
 
+  # Exportador para traces do Coralogix
   otlp/coralogix-traces:
-    endpoint: ingress.eu2.coralogix.com:443
+    endpoint: ${env:CORALOGIX_DOMAIN}:443
     headers:
-      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+      authorization: Bearer ${env:CORALOGIX_PRIVATE_KEY}
     compression: gzip
     tls:
       insecure: false
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
+  # Exportador para métricas do Coralogix
   otlp/coralogix-metrics:
-    endpoint: ingress.eu2.coralogix.com:443
+    endpoint: ${env:CORALOGIX_DOMAIN}:443
     headers:
-      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+      authorization: Bearer ${env:CORALOGIX_PRIVATE_KEY}
     compression: gzip
     tls:
       insecure: false
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
+  # Exportador para logs do Coralogix
   otlp/coralogix-logs:
-    endpoint: ingress.eu2.coralogix.com:443
+    endpoint: ${env:CORALOGIX_DOMAIN}:443
     headers:
-      authorization: Bearer ${CORALOGIX_PRIVATE_KEY}
+      authorization: Bearer ${env:CORALOGIX_PRIVATE_KEY}
     compression: gzip
     tls:
       insecure: false
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
 service:
   pipelines:
     traces:
       receivers: [ otlp ]
-      processors: [ batch, resource ]
-      exporters: [ otlp/jaeger, debug, otlp/coralogix-traces ]
+      processors: [ batch, resource, attributes ]
+      exporters: [ otlp/jaeger, otlp/coralogix-traces ]
     metrics:
       receivers: [ otlp ]
-      processors: [ batch, resource ]
-      exporters: [ prometheus, debug, otlp/coralogix-metrics ]
+      processors: [ batch, resource, attributes ]
+      exporters: [ prometheus, otlp/coralogix-metrics ]
     logs:
       receivers: [ otlp ]
-      processors: [ batch, resource ]
-      exporters: [ otlphttp, debug, otlp/coralogix-logs ]
+      processors: [ batch, resource, attributes ]
+      exporters: [ otlphttp, otlp/coralogix-logs ]

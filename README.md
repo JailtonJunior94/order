@@ -57,7 +57,74 @@ Este projeto é um serviço de pedidos (Order Service) desenvolvido em Go, com a
    ```
 
 ## Observabilidade
-- Configuração de Prometheus, Grafana e OpenTelemetry em `deployment/observability/`
+
+Este projeto está totalmente integrado com **Coralogix** para observabilidade em produção, além de ferramentas locais para desenvolvimento.
+
+### 🎯 Stack de Observabilidade
+
+#### Produção (Coralogix)
+- **Logs**: Logs estruturados com contexto completo
+- **Traces**: Distributed tracing com OpenTelemetry
+- **Métricas**: Métricas customizadas e de sistema
+
+#### Desenvolvimento (Local)
+- **Jaeger**: Visualização de traces (http://localhost:16686)
+- **Prometheus**: Coleta de métricas (http://localhost:9090)
+- **Grafana**: Dashboards e visualizações (http://localhost:3000)
+- **Loki**: Agregação de logs
+
+### 🚀 Quick Start com Coralogix
+
+```bash
+# 1. Configure o Coralogix
+make setup-coralogix
+
+# 2. Edite deployment/.env com sua Private Key
+# CORALOGIX_PRIVATE_KEY=sua-chave-aqui
+
+# 3. Inicie os serviços
+make start_docker
+
+# 4. Verifique os logs
+make logs-otel
+```
+
+### 📚 Documentação Detalhada
+
+- **[Quick Start](deployment/QUICKSTART.md)** - Guia rápido de início
+- **[Setup Completo](deployment/CORALOGIX_SETUP.md)** - Documentação detalhada
+- **Script de Verificação**: `./deployment/verify-coralogix-config.sh`
+
+### 🔍 Serviços Instrumentados
+
+Todos os serviços enviam telemetria para o Coralogix:
+
+1. **order-api** (porta 8000) - API REST
+   - Traces de requisições HTTP
+   - Métricas de performance
+   - Logs estruturados
+
+2. **order-consumer** - Consumidor Kafka
+   - Traces de processamento de mensagens
+   - Métricas de lag e throughput
+   - Logs de eventos
+
+3. **order-worker** - Worker de tarefas
+   - Traces de execução de jobs
+   - Métricas de processamento
+   - Logs de execução
+
+### 📊 Acessar Dashboards
+
+```bash
+# Coralogix Dashboard
+open https://dashboard.coralogix.com
+
+# Ferramentas Locais
+open http://localhost:16686  # Jaeger
+open http://localhost:9090  # Prometheus
+open http://localhost:3000  # Grafana
+```
 
 ## Banco de Dados
 - Migrações SQL em `database/migrations/`

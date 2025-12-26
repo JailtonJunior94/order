@@ -106,15 +106,17 @@ services:
       - "4317:4317"
       - "8889:8889"
     environment:
+      # Coralogix Configuration
       - CORALOGIX_PRIVATE_KEY=${CORALOGIX_PRIVATE_KEY}
-      - CORALOGIX_APP_NAME=${CORALOGIX_APP_NAME}
-      - CORALOGIX_SUBSYSTEM_NAME=${CORALOGIX_SUBSYSTEM_NAME}
-
+      - CORALOGIX_APP_NAME=${CORALOGIX_APP_NAME:-orders}
+      - CORALOGIX_DOMAIN=${CORALOGIX_DOMAIN:-ingress.eu2.coralogix.com}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       - jaeger
       - prometheus
       - loki
       - grafana
+    restart: unless-stopped
 
   jaeger:
     image: jaegertracing/all-in-one:latest
