@@ -85,11 +85,17 @@ type otelCounter struct {
 
 // Add increments the counter.
 func (c *otelCounter) Add(ctx context.Context, value int64, fields ...observability.Field) {
-	opts := metric.AddOption(nil)
-	if len(fields) > 0 {
-		opts = metric.WithAttributes(convertFieldsToOtelAttributes(fields)...)
+	if len(fields) == 0 {
+		c.counter.Add(ctx, value)
+		return
 	}
-	c.counter.Add(ctx, value, opts)
+
+	c.counter.Add(ctx, value, metric.WithAttributes(convertFieldsToOtelAttributes(fields)...))
+}
+
+// Increment increments the counter by 1.
+func (c *otelCounter) Increment(ctx context.Context, fields ...observability.Field) {
+	c.Add(ctx, 1, fields...)
 }
 
 // otelHistogram implements observability.Histogram.
@@ -99,11 +105,12 @@ type otelHistogram struct {
 
 // Record adds a value to the histogram.
 func (h *otelHistogram) Record(ctx context.Context, value float64, fields ...observability.Field) {
-	opts := metric.RecordOption(nil)
-	if len(fields) > 0 {
-		opts = metric.WithAttributes(convertFieldsToOtelAttributes(fields)...)
+	if len(fields) == 0 {
+		h.histogram.Record(ctx, value)
+		return
 	}
-	h.histogram.Record(ctx, value, opts)
+
+	h.histogram.Record(ctx, value, metric.WithAttributes(convertFieldsToOtelAttributes(fields)...))
 }
 
 // otelUpDownCounter implements observability.UpDownCounter.
@@ -113,11 +120,12 @@ type otelUpDownCounter struct {
 
 // Add adds a value to the up-down counter.
 func (u *otelUpDownCounter) Add(ctx context.Context, value int64, fields ...observability.Field) {
-	opts := metric.AddOption(nil)
-	if len(fields) > 0 {
-		opts = metric.WithAttributes(convertFieldsToOtelAttributes(fields)...)
+	if len(fields) == 0 {
+		u.counter.Add(ctx, value)
+		return
 	}
-	u.counter.Add(ctx, value, opts)
+
+	u.counter.Add(ctx, value, metric.WithAttributes(convertFieldsToOtelAttributes(fields)...))
 }
 
 // convertFieldsToOtelAttributes converts observability fields to OTel attributes.
@@ -153,6 +161,8 @@ func convertFieldToOtelAttribute(field observability.Field) attribute.KeyValue {
 type noopCounter struct{}
 
 func (c *noopCounter) Add(ctx context.Context, value int64, fields ...observability.Field) {}
+
+func (c *noopCounter) Increment(ctx context.Context, fields ...observability.Field) {}
 
 type noopHistogram struct{}
 

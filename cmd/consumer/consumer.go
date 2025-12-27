@@ -67,6 +67,7 @@ func (c *consumer) Run() {
 		ServiceVersion:  ioc.Config.O11yConfig.ServiceVersion,
 		Environment:     ioc.Config.Environment,
 		OTLPEndpoint:    ioc.Config.O11yConfig.ExporterEndpoint,
+		OTLPProtocol:    otel.OTLPProtocol(ioc.Config.O11yConfig.Protocol),
 		TraceSampleRate: sampleRate,
 		LogLevel:        logLevel,
 		LogFormat:       logFormat,

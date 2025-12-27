@@ -86,8 +86,7 @@ func (c *createOrderUseCase) Execute(ctx context.Context, input *dtos.OrderInput
 		return nil, err
 	}
 
-	counter := c.o11y.Metrics().Counter("order_created_total", "Total orders created", "1")
-	counter.Add(ctx, 1)
+	c.o11y.Metrics().Counter("order_created_total", "Total orders created", "1").Increment(ctx)
 
 	c.o11y.Logger().Info(ctx, "order_created", observability.String("id", newOrder.ID.String()))
 	return dtos.NewOrderOutput(newOrder.ID.String(), newOrder.Status.String()), nil

@@ -21,6 +21,9 @@ type Metrics interface {
 type Counter interface {
 	// Add increments the counter by the given value with optional attributes.
 	Add(ctx context.Context, value int64, fields ...Field)
+
+	// Increment increments the counter by 1 with optional attributes.
+	Increment(ctx context.Context, fields ...Field)
 }
 
 // Histogram records a distribution of values.

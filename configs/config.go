@@ -38,9 +38,10 @@ type (
 		OrderConsumer    string `mapstructure:"ORDER_CONSUMER_SERVICE_NAME"`
 		ServiceVersion   string `mapstructure:"OTEL_SERVICE_VERSION"`
 		ExporterEndpoint string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
-		LogLevel         string `mapstructure:"OTEL_LOG_LEVEL"`         // debug, info, warn, error
-		LogFormat        string `mapstructure:"OTEL_LOG_FORMAT"`        // json, text
-		TraceSampleRate  string `mapstructure:"OTEL_TRACE_SAMPLE_RATE"` // 0.0 to 1.0
+		Protocol         string `mapstructure:"OTEL_EXPORTER_OTLP_PROTOCOL"` // grpc or http
+		LogLevel         string `mapstructure:"OTEL_LOG_LEVEL"`              // debug, info, warn, error
+		LogFormat        string `mapstructure:"OTEL_LOG_FORMAT"`             // json, text
+		TraceSampleRate  string `mapstructure:"OTEL_TRACE_SAMPLE_RATE"`      // 0.0 to 1.0
 	}
 
 	KafkaConfig struct {

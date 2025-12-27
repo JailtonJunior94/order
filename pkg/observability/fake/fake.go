@@ -406,6 +406,11 @@ func (c *FakeCounter) Add(ctx context.Context, value int64, fields ...observabil
 	})
 }
 
+// Increment increments the counter by 1.
+func (c *FakeCounter) Increment(ctx context.Context, fields ...observability.Field) {
+	c.Add(ctx, 1, fields...)
+}
+
 // GetValues returns all captured values.
 func (c *FakeCounter) GetValues() []CounterValue {
 	c.mu.RLock()

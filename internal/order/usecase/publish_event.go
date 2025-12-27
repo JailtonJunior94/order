@@ -133,15 +133,15 @@ func (c *publishEventUseCase) publishAndMarkAsPublished(ctx context.Context, eve
 	if err := c.brokerClient.Produce(ctx, c.config.KafkaConfig.Order, headers, message); err != nil {
 		span.AddEvent("kafka produce failed", observability.Error(err))
 
-		errorCounter := c.o11y.Metrics().Counter("outbox_kafka_publish_errors_total", "Total Kafka publish errors", "1")
-		errorCounter.Add(ctx, 1, observability.String("event_name", event.EventName))
+		c.o11y.Metrics().Counter("outbox_kafka_publish_errors_total", "Total Kafka publish errors", "1").
+			Increment(ctx, observability.String("event_name", event.EventName))
 		return err
 	}
 
 	span.AddEvent("kafka produce succeeded")
 
-	publishedCounter := c.o11y.Metrics().Counter("outbox_kafka_published_total", "Total events published to Kafka", "1")
-	publishedCounter.Add(ctx, 1, observability.String("event_name", event.EventName))
+	c.o11y.Metrics().Counter("outbox_kafka_published_total", "Total events published to Kafka", "1").
+		Increment(ctx, observability.String("event_name", event.EventName))
 
 	// Step 2: Mark as published in a NEW separate transaction
 	// If this fails, the event will be republished (idempotency required in consumer)
@@ -164,8 +164,8 @@ func (c *publishEventUseCase) publishAndMarkAsPublished(ctx context.Context, eve
 			observability.String("event_id", event.ID.String()),
 			observability.String("event_name", event.EventName))
 
-		markErrorCounter := c.o11y.Metrics().Counter("outbox_mark_published_errors_total", "Total mark as published errors", "1")
-		markErrorCounter.Add(ctx, 1, observability.String("event_name", event.EventName))
+		c.o11y.Metrics().Counter("outbox_mark_published_errors_total", "Total mark as published errors", "1").
+			Increment(ctx, observability.String("event_name", event.EventName))
 
 		return err
 	}

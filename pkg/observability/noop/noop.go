@@ -124,6 +124,8 @@ type noopCounter struct{}
 
 func (c noopCounter) Add(ctx context.Context, value int64, fields ...observability.Field) {}
 
+func (c noopCounter) Increment(ctx context.Context, fields ...observability.Field) {}
+
 // noopHistogram implements observability.Histogram with no-op operations.
 type noopHistogram struct{}
 
