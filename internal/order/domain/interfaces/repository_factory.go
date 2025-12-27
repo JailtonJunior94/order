@@ -2,10 +2,10 @@ package interfaces
 
 import (
 	"github.com/jailtonjunior94/order/pkg/database"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/observability"
 )
 
 type RepositoryFactory interface {
-	OrderRepository(db database.DBTX, telemetry o11y.Telemetry) OrderRepository
-	OutboxRepository(db database.DBTX, telemetry o11y.Telemetry) OutboxRepository
+	OrderRepository(db database.DBTX, o11y observability.Observability) OrderRepository
+	OutboxRepository(db database.DBTX, o11y observability.Observability) OutboxRepository
 }

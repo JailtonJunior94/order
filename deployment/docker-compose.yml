@@ -217,7 +217,152 @@ services:
       - DB_MAX_IDLE_CONNS=10
       - MIGRATE_PATH=file://migrations/order
     depends_on:
-      - cockroachdb
+      cockroachdb:
+        condition: service_healthy
+
+  order-api:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: api
+    container_name: order-api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - HTTP_PORT=8001
+      - ORDER_API_SERVICE_NAME=order-api
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT_HTTP=http://otel-collector:4318/v1/logs
+      - DB_DRIVER=postgres
+      - DB_HOST=cockroachdb
+      - DB_PORT=26257
+      - DB_USER=root
+      - DB_PASSWORD=order@password
+      - DB_NAME=orders
+      - DB_MAX_IDLE_CONNS=10
+      - MIGRATE_PATH=file://migrations/order
+      - KAFKA_BROKERS=kafka:29092
+      - KAFKA_ORDER_TOPIC=orders
+      - KAFKA_ORDER_DLQ_TOPIC=orders-dlq
+      - KAFKA_ORDER_NUM_PARTITIONS=1
+      - KAFKA_ORDER_REPLICATION_FACTOR=1
+      - KAFKA_ORDER_GROUP_ID=order-group
+      - CLIENT_SERVICE_URL=https://32ed865c-5cb8-4557-8db7-2819e3ac0b9c.mock.pstmn.io
+      - CLIENT_SERVICE_TIMEOUT=30s
+      - CLIENT_MAX_RETRIES=3
+      - CLIENT_INITIAL_RETRY_DELAY=100ms
+      - CLIENT_MAX_RETRY_DELAY=2s
+      - CLIENT_RETRYABLE_STATUS_CODES=408,429,500,502,503,504
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      order_migration:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  order-worker:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: workers
+    container_name: order-worker
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ORDER_WORKER_SERVICE_NAME=order-worker
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT_HTTP=http://otel-collector:4318/v1/logs
+      - DB_DRIVER=postgres
+      - DB_HOST=cockroachdb
+      - DB_PORT=26257
+      - DB_USER=root
+      - DB_PASSWORD=order@password
+      - DB_NAME=orders
+      - DB_MAX_IDLE_CONNS=10
+      - MIGRATE_PATH=file://migrations/order
+      - KAFKA_BROKERS=kafka:29092
+      - KAFKA_ORDER_TOPIC=orders
+      - KAFKA_ORDER_DLQ_TOPIC=orders-dlq
+      - KAFKA_ORDER_NUM_PARTITIONS=1
+      - KAFKA_ORDER_REPLICATION_FACTOR=1
+      - WORKER_CRON=* * * * *
+      - CLIENT_SERVICE_URL=https://32ed865c-5cb8-4557-8db7-2819e3ac0b9c.mock.pstmn.io
+      - CLIENT_SERVICE_TIMEOUT=30s
+      - CLIENT_MAX_RETRIES=3
+      - CLIENT_INITIAL_RETRY_DELAY=100ms
+      - CLIENT_MAX_RETRY_DELAY=2s
+      - CLIENT_RETRYABLE_STATUS_CODES=408,429,500,502,503,504
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      order_migration:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+  order-consumer:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: consumers
+    container_name: order-consumer
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ORDER_CONSUMER_SERVICE_NAME=order-consumer
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT_HTTP=http://otel-collector:4318/v1/logs
+      - DB_DRIVER=postgres
+      - DB_HOST=cockroachdb
+      - DB_PORT=26257
+      - DB_USER=root
+      - DB_PASSWORD=order@password
+      - DB_NAME=orders
+      - DB_MAX_IDLE_CONNS=10
+      - MIGRATE_PATH=file://migrations/order
+      - KAFKA_BROKERS=kafka:29092
+      - KAFKA_ORDER_TOPIC=orders
+      - KAFKA_ORDER_DLQ_TOPIC=orders-dlq
+      - KAFKA_ORDER_NUM_PARTITIONS=1
+      - KAFKA_ORDER_REPLICATION_FACTOR=1
+      - KAFKA_ORDER_GROUP_ID=order-group
+      - CLIENT_SERVICE_URL=https://32ed865c-5cb8-4557-8db7-2819e3ac0b9c.mock.pstmn.io
+      - CLIENT_SERVICE_TIMEOUT=30s
+      - CLIENT_MAX_RETRIES=3
+      - CLIENT_INITIAL_RETRY_DELAY=100ms
+      - CLIENT_MAX_RETRY_DELAY=2s
+      - CLIENT_RETRYABLE_STATUS_CODES=408,429,500,502,503,504
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      order_migration:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
 
 volumes:
   cockroachdb_data:

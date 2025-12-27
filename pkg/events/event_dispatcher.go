@@ -9,6 +9,7 @@ import (
 var ErrHandlerAlreadyRegistered = errors.New("handler already registered")
 
 type eventDispatcher struct {
+	mu       sync.RWMutex
 	handlers map[string][]EventHandler
 }
 
@@ -19,11 +20,21 @@ func NewEventDispatcher() EventDispatcher {
 }
 
 func (ev *eventDispatcher) Dispatch(ctx context.Context, event Event) error {
-	if handlers, ok := ev.handlers[event.GetEventType()]; ok {
+	ev.mu.RLock()
+	handlers, ok := ev.handlers[event.GetEventType()]
+	ev.mu.RUnlock()
+
+	if ok {
 		wg := &sync.WaitGroup{}
 		for _, handler := range handlers {
 			wg.Add(1)
-			go handler.Handle(ctx, event, wg)
+			h := handler // capture loop variable
+			go func() {
+				if err := h.Handle(ctx, event, wg); err != nil {
+					// Log error but continue execution
+					// In production, consider using proper logging
+				}
+			}()
 		}
 		wg.Wait()
 	}
@@ -31,6 +42,9 @@ func (ev *eventDispatcher) Dispatch(ctx context.Context, event Event) error {
 }
 
 func (ed *eventDispatcher) Register(eventName string, handler EventHandler) error {
+	ed.mu.Lock()
+	defer ed.mu.Unlock()
+
 	if _, ok := ed.handlers[eventName]; ok {
 		for _, h := range ed.handlers[eventName] {
 			if h == handler {
@@ -43,6 +57,9 @@ func (ed *eventDispatcher) Register(eventName string, handler EventHandler) erro
 }
 
 func (ed *eventDispatcher) Has(eventName string, handler EventHandler) bool {
+	ed.mu.RLock()
+	defer ed.mu.RUnlock()
+
 	if _, ok := ed.handlers[eventName]; ok {
 		for _, h := range ed.handlers[eventName] {
 			if h == handler {
@@ -54,6 +71,9 @@ func (ed *eventDispatcher) Has(eventName string, handler EventHandler) bool {
 }
 
 func (ed *eventDispatcher) Remove(eventName string, handler EventHandler) error {
+	ed.mu.Lock()
+	defer ed.mu.Unlock()
+
 	if _, ok := ed.handlers[eventName]; ok {
 		for i, h := range ed.handlers[eventName] {
 			if h == handler {
@@ -66,5 +86,7 @@ func (ed *eventDispatcher) Remove(eventName string, handler EventHandler) error 
 }
 
 func (ed *eventDispatcher) Clear() {
+	ed.mu.Lock()
+	defer ed.mu.Unlock()
 	ed.handlers = make(map[string][]EventHandler)
 }

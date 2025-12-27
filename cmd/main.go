@@ -59,5 +59,7 @@ func main() {
 	}
 
 	root.AddCommand(migrate, server, consumers, workers)
-	root.Execute()
+	if err := root.Execute(); err != nil {
+		log.Fatal(err)
+	}
 }

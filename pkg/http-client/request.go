@@ -13,17 +13,30 @@ func MakeRequest[TSuccess any, TError any](ctx context.Context, client HTTPClien
 		return http.StatusInternalServerError, nil, nil, err
 	}
 
+	// TODO: Re-implement correlation ID
+	// Auto-inject correlation ID if present in context
+	// if correlationID := ...FromContext(ctx); correlationID != "" {
+	// 	request.Header.Set("X-Correlation-Id", correlationID.String())
+	// }
+
 	for key, value := range headers {
 		request.Header.Add(key, value)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return response.StatusCode, nil, nil, err
+		if response != nil {
+			return response.StatusCode, nil, nil, err
+		}
+		return http.StatusInternalServerError, nil, nil, err
 	}
 
 	if response != nil {
-		defer response.Body.Close()
+		defer func() {
+			if err := response.Body.Close(); err != nil {
+				// Log error but don't override the main error
+			}
+		}()
 	}
 
 	if response.StatusCode < 200 || response.StatusCode > 299 {

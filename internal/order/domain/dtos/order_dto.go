@@ -2,7 +2,8 @@ package dtos
 
 type (
 	OrderInput struct {
-		Items []*OrderItemInput `json:"items"`
+		ClientID string            `json:"client_id"`
+		Items    []*OrderItemInput `json:"items"`
 	}
 
 	OrderItemInput struct {

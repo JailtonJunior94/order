@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 
-	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/observability"
 
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/propagation"
@@ -16,7 +16,7 @@ type (
 
 	kafkaClient struct {
 		client    *kafka.Writer
-		telemetry o11y.Telemetry
+		o11y observability.Observability
 	}
 
 	Message struct {
@@ -27,17 +27,17 @@ type (
 
 func NewKafkaClient(
 	broker string,
-	telemetry o11y.Telemetry,
+	o11y observability.Observability,
 ) KafkaClient {
 	client := &kafka.Writer{
 		Addr:     kafka.TCP(broker),
 		Balancer: &kafka.LeastBytes{},
 	}
-	return &kafkaClient{telemetry: telemetry, client: client}
+	return &kafkaClient{o11y: o11y, client: client}
 }
 
 func (k *kafkaClient) Produce(ctx context.Context, topic string, headers map[string]string, message *Message) error {
-	ctx, span := k.telemetry.Tracer().Start(ctx, "producer.produce")
+	ctx, span := k.o11y.Tracer().Start(ctx, "producer.produce")
 	defer span.End()
 
 	messageKafka := kafka.Message{
@@ -50,7 +50,16 @@ func (k *kafkaClient) Produce(ctx context.Context, topic string, headers map[str
 	propagator := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 	propagator.Inject(ctx, propagation.HeaderCarrier(tracingHeader))
 
-	headers["traceID"] = tracingHeader["Traceparent"][0]
+	if traceParent, ok := tracingHeader["Traceparent"]; ok && len(traceParent) > 0 {
+		headers["traceID"] = traceParent[0]
+	}
+
+	// TODO: Re-implement correlation ID
+	// Propagate correlation ID if present in context
+	// if correlationID := ...FromContext(ctx); correlationID != "" {
+	// 	headers["correlationID"] = correlationID.String()
+	// }
+
 	for key, value := range headers {
 		messageKafka.Headers = append(messageKafka.Headers, kafka.Header{
 			Key:   key,

@@ -4,9 +4,11 @@ Este projeto é um serviço de pedidos (Order Service) desenvolvido em Go, com a
 
 ## Funcionalidades
 - Gerenciamento de pedidos (criação, atualização, consulta)
+- Validação de clientes via serviço externo
 - Processamento assíncrono de eventos via Kafka
 - Observabilidade com métricas, logs e traces
 - Migrações de banco de dados automatizadas
+- Mock Server para testes de integração
 - Estrutura pronta para testes e escalabilidade
 
 ## Estrutura de Pastas
@@ -47,14 +49,58 @@ Este projeto é um serviço de pedidos (Order Service) desenvolvido em Go, com a
 
 ## Como rodar o projeto
 
-1. **Suba os serviços necessários:**
-   ```sh
-   make start_docker
-   ```
-2. **Execute a aplicação:**
-   ```sh
-   go run ./cmd/main.go
-   ```
+### Opção 1: Rodar tudo com Docker (Recomendado)
+
+```bash
+# Ver todos os comandos disponíveis
+make help
+
+# Subir apenas a infraestrutura (DB, Kafka, Observabilidade)
+make infra-up
+
+# Subir tudo (Infraestrutura + Aplicações)
+make up
+
+# Ver status dos serviços
+make ps
+
+# Ver logs dos serviços
+make logs-all           # Todos os logs
+make logs-api           # Logs da API
+make logs-consumer      # Logs do Consumer
+make logs-worker        # Logs do Worker
+
+# Parar os serviços
+make down
+```
+
+### Opção 2: Rodar localmente (Desenvolvimento)
+
+```bash
+# 1. Subir apenas a infraestrutura
+make infra-up
+
+# 2. Configurar variáveis de ambiente
+make dotenv
+
+# 3. Executar as aplicações localmente
+go run ./cmd/main.go api        # API REST
+go run ./cmd/main.go consumers  # Consumer Kafka
+go run ./cmd/main.go workers    # Worker
+```
+
+### Serviços Disponíveis
+
+Após iniciar com `make up`, os seguintes serviços estarão disponíveis:
+
+| Serviço | URL | Descrição |
+|---------|-----|-----------|
+| Order API | http://localhost:8001 | API REST do serviço de pedidos |
+| CockroachDB UI | http://localhost:8080 | Interface do banco de dados |
+| Kafka UI (Redpanda) | http://localhost:8085 | Interface para gerenciar Kafka |
+| Jaeger | http://localhost:16686 | Visualização de traces |
+| Prometheus | http://localhost:9090 | Métricas do sistema |
+| Grafana | http://localhost:3000 | Dashboards de observabilidade |
 
 ## Observabilidade
 
@@ -83,7 +129,7 @@ make setup-coralogix
 # CORALOGIX_PRIVATE_KEY=sua-chave-aqui
 
 # 3. Inicie os serviços
-make start_docker
+make up
 
 # 4. Verifique os logs
 make logs-otel
@@ -132,6 +178,63 @@ open http://localhost:3000  # Grafana
 
 ## Mensageria
 - Integração com Kafka para eventos de pedidos
+
+## 🧪 Mock Server - Client Service
+
+Este projeto inclui um **Mock Server Postman** completo para simular a API de consulta de clientes, facilitando testes e desenvolvimento sem dependência de serviços externos.
+
+### 📋 Recursos do Mock Server
+
+- ✅ **5 Cenários de Teste**: Cliente ativo, inativo, não encontrado, serviço indisponível e timeout
+- ✅ **Collection Postman Importável**: Pronta para importar e usar
+- ✅ **Testes Automatizados**: Validação automática de responses
+- ✅ **Scripts de Exemplo**: cURL, Python, Go, JavaScript
+- ✅ **Documentação Completa**: Guias passo a passo
+
+### 🚀 Quick Start
+
+```bash
+# 1. Importe a collection no Postman
+docs/postman_collection.json
+
+# 2. Crie o Mock Server no Postman:
+#    Collection → Mock Collection → Create Mock Server
+
+# 3. Use a URL gerada nos seus testes
+export CLIENT_SERVICE_BASE_URL="https://xxxxx.mock.pstmn.io"
+```
+
+### 📚 Documentação do Mock Server
+
+- **[Setup Guide](docs/POSTMAN_MOCK_SETUP.md)** - Guia completo de configuração
+- **[Exemplos de Uso](docs/POSTMAN_MOCK_EXAMPLES.md)** - Scripts e código de exemplo
+- **[Collection JSON](docs/postman_collection.json)** - Arquivo para importar no Postman
+
+### 🎯 Cenários Disponíveis
+
+| ClientId | Status | Comportamento |
+|----------|--------|---------------|
+| `client-123` | 200 | Retorna cliente ativo |
+| `inactive-123` | 200 | Retorna cliente inativo |
+| `notfound-123` | 404 | Cliente não encontrado |
+| `unavailable-123` | 503 | Serviço indisponível |
+| `timeout-123` | 504 | Simula timeout |
+
+### Exemplo de Uso
+
+```bash
+# Testar cliente ativo
+curl -X GET "https://xxxxx.mock.pstmn.io/clients/client-123" \
+  -H "Content-Type: application/json"
+
+# Response:
+# {
+#   "id": "client-123",
+#   "name": "João Silva",
+#   "email": "joao.silva@example.com",
+#   "active": true
+# }
+```
 
 ## Contribuição
 Pull requests são bem-vindos! Siga o padrão de código e mantenha os testes atualizados.

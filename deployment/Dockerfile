@@ -23,6 +23,8 @@ RUN make build_order
 FROM alpine:3.22.1
 WORKDIR /app
 
+RUN apk --no-cache add wget ca-certificates
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group

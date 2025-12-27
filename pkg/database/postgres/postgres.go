@@ -24,7 +24,23 @@ func NewPostgresDatabase(config *configs.Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, ErrSQLOpenConn
 	}
-	sqlDB.SetMaxIdleConns(config.DBConfig.DBMaxIdleConns)
+
+	// Configure connection pool for production
+	maxIdleConns := config.DBConfig.DBMaxIdleConns
+	if maxIdleConns == 0 {
+		maxIdleConns = 10 // default
+	}
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+
+	// Set max open connections to prevent resource exhaustion
+	// Default: 2x idle connections (good practice)
+	maxOpenConns := maxIdleConns * 2
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+
+	// Set connection lifetime to prevent stale connections
+	sqlDB.SetConnMaxLifetime(30 * 60 * 1000000000) // 30 minutes
+	sqlDB.SetConnMaxIdleTime(10 * 60 * 1000000000) // 10 minutes
+
 	return sqlDB, nil
 }
 

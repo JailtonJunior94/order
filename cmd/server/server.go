@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/jailtonjunior94/order/internal/order"
 	"github.com/jailtonjunior94/order/pkg/bundle"
-	"github.com/jailtonjunior94/order/pkg/o11y"
+	"github.com/jailtonjunior94/order/pkg/observability"
+	"github.com/jailtonjunior94/order/pkg/observability/otel"
 	"github.com/jailtonjunior94/order/pkg/responses"
 
 	"github.com/go-chi/chi/v5"
@@ -32,62 +34,53 @@ func (s *apiServer) Run() {
 	ioc := bundle.NewContainer(ctx)
 
 	/* Observability */
-	resource, err := o11y.NewServiceResource(ctx, ioc.Config.O11yConfig.OrderAPI, ioc.Config.O11yConfig.ServiceVersion, ioc.Config.Environment)
-	if err != nil {
-		log.Fatalf("failed to create resource: %v", err)
+	// Parse configuration with defaults
+	logLevel := observability.LogLevelInfo
+	if ioc.Config.O11yConfig.LogLevel != "" {
+		logLevel = observability.LogLevel(ioc.Config.O11yConfig.LogLevel)
 	}
 
-	tracer, tracerShutdown, err := o11y.NewTracerWithOptions(
-		ctx,
-		o11y.WithTracerEndpoint(ioc.Config.O11yConfig.ExporterEndpoint),
-		o11y.WithTracerServiceName(ioc.Config.O11yConfig.OrderAPI),
-		o11y.WithTracerResource(resource),
-		o11y.WithTracerInsecure(),
-	)
-	if err != nil {
-		log.Fatalf("failed to create tracer: %v", err)
+	logFormat := observability.LogFormatJSON
+	if ioc.Config.O11yConfig.LogFormat == "text" {
+		logFormat = observability.LogFormatText
 	}
 
-	metrics, metricsShutdown, err := o11y.NewMetricsWithOptions(
-		ctx,
-		o11y.WithMetricsEndpoint(ioc.Config.O11yConfig.ExporterEndpoint),
-		o11y.WithMetricsServiceName(ioc.Config.O11yConfig.OrderAPI),
-		o11y.WithMetricsResource(resource),
-		o11y.WithMetricsInsecure(),
-	)
-	if err != nil {
-		log.Fatalf("failed to create metrics: %v", err)
+	sampleRate := 1.0
+	if ioc.Config.O11yConfig.TraceSampleRate != "" {
+		if rate, err := strconv.ParseFloat(ioc.Config.O11yConfig.TraceSampleRate, 64); err == nil {
+			sampleRate = rate
+		}
 	}
 
-	logger, loggerShutdown, err := o11y.NewLoggerWithOptions(
-		ctx,
-		o11y.WithLoggerEndpoint(ioc.Config.O11yConfig.ExporterEndpointHTTP),
-		o11y.WithLoggerServiceName(ioc.Config.O11yConfig.OrderAPI),
-		o11y.WithLoggerResource(resource),
-		o11y.WithLoggerInsecure(),
-	)
-	if err != nil {
-		log.Fatalf("failed to create logger: %v", err)
+	// Create observability provider
+	config := &otel.Config{
+		ServiceName:     ioc.Config.O11yConfig.OrderAPI,
+		ServiceVersion:  ioc.Config.O11yConfig.ServiceVersion,
+		Environment:     ioc.Config.Environment,
+		OTLPEndpoint:    ioc.Config.O11yConfig.ExporterEndpoint,
+		TraceSampleRate: sampleRate,
+		LogLevel:        logLevel,
+		LogFormat:       logFormat,
 	}
 
-	telemetry, err := o11y.NewTelemetry(tracer, metrics, logger, tracerShutdown, metricsShutdown, loggerShutdown)
+	o11y, err := otel.NewProvider(ctx, config)
 	if err != nil {
-		log.Fatalf("failed to create telemetry: %v", err)
+		log.Fatalf("failed to initialize observability: %v", err)
 	}
 
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		if err := telemetry.Shutdown(shutdownCtx); err != nil {
-			log.Printf("telemetry shutdown error: %v", err)
+		if err := o11y.Shutdown(shutdownCtx); err != nil {
+			log.Printf("observability shutdown error: %v", err)
 		}
 	}()
 
 	/* Close DBConnection */
 	defer func() {
 		if err := ioc.DB.Close(); err != nil {
-			log.Fatal(err)
+			log.Printf("failed to close database: %v", err)
 		}
 	}()
 
@@ -95,6 +88,7 @@ func (s *apiServer) Run() {
 	router.Use(
 		middleware.RealIP,
 		middleware.RequestID,
+		// TODO: Create new correlation middleware for observability
 		middleware.SetHeader("Content-Type", "application/json"),
 		middleware.AllowContentType("application/json", "application/x-www-form-urlencoded"),
 	)
@@ -108,7 +102,7 @@ func (s *apiServer) Run() {
 	})
 
 	/* Order */
-	order.RegisterOrderModule(ioc, telemetry, router)
+	order.RegisterOrderModule(ioc, o11y, router)
 
 	/* Graceful shutdown */
 	server := http.Server{
@@ -119,7 +113,8 @@ func (s *apiServer) Run() {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", ioc.Config.HTTPConfig.Port))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("failed to create listener: %v", err)
+		return
 	}
 
 	go func() {
@@ -140,6 +135,6 @@ func (s *apiServer) gracefulShutdown(server *http.Server) {
 	defer cancel()
 
 	if err := server.Shutdown(ctxShutdown); err != nil {
-		log.Fatal(err)
+		log.Printf("server shutdown error: %v", err)
 	}
 }
