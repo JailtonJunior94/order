@@ -3,21 +3,36 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 )
 
+const (
+	// DefaultMaxResponseSize is the default maximum response body size (10MB).
+	DefaultMaxResponseSize int64 = 10 * 1024 * 1024
+)
+
+var (
+	// ErrResponseTooLarge is returned when the response body exceeds the maximum size.
+	ErrResponseTooLarge = errors.New("response body exceeds maximum allowed size")
+)
+
+// MakeRequest performs an HTTP request and decodes the response.
+// The response body is limited to DefaultMaxResponseSize (10MB) to prevent memory exhaustion.
+// Returns: statusCode, successResponse, errorResponse, error
 func MakeRequest[TSuccess any, TError any](ctx context.Context, client HTTPClient, method, url string, headers map[string]string, payload io.Reader) (int, *TSuccess, *TError, error) {
+	return MakeRequestWithLimit[TSuccess, TError](ctx, client, method, url, headers, payload, DefaultMaxResponseSize)
+}
+
+// MakeRequestWithLimit performs an HTTP request with a custom response body size limit.
+// Set maxBodySize to 0 or negative for no limit (not recommended).
+// Returns: statusCode, successResponse, errorResponse, error
+func MakeRequestWithLimit[TSuccess any, TError any](ctx context.Context, client HTTPClient, method, url string, headers map[string]string, payload io.Reader, maxBodySize int64) (int, *TSuccess, *TError, error) {
 	request, err := http.NewRequestWithContext(ctx, method, url, payload)
 	if err != nil {
-		return http.StatusInternalServerError, nil, nil, err
+		return 0, nil, nil, err
 	}
-
-	// TODO: Re-implement correlation ID
-	// Auto-inject correlation ID if present in context
-	// if correlationID := ...FromContext(ctx); correlationID != "" {
-	// 	request.Header.Set("X-Correlation-Id", correlationID.String())
-	// }
 
 	for key, value := range headers {
 		request.Header.Add(key, value)
@@ -25,31 +40,34 @@ func MakeRequest[TSuccess any, TError any](ctx context.Context, client HTTPClien
 
 	response, err := client.Do(request)
 	if err != nil {
-		if response != nil {
-			return response.StatusCode, nil, nil, err
-		}
-		return http.StatusInternalServerError, nil, nil, err
+		return 0, nil, nil, err
 	}
 
 	if response != nil {
 		defer func() {
-			if err := response.Body.Close(); err != nil {
-				// Log error but don't override the main error
-			}
+			_ = response.Body.Close()
 		}()
 	}
 
-	if response.StatusCode < 200 || response.StatusCode > 299 {
+	statusCode := response.StatusCode
+
+	// Limit the response body size to prevent memory exhaustion attacks
+	var bodyReader io.Reader = response.Body
+	if maxBodySize > 0 {
+		bodyReader = io.LimitReader(response.Body, maxBodySize+1)
+	}
+
+	if statusCode < 200 || statusCode > 299 {
 		var errorResponse *TError
-		if err := json.NewDecoder(response.Body).Decode(&errorResponse); err != nil {
-			return http.StatusInternalServerError, nil, nil, err
+		if err := json.NewDecoder(bodyReader).Decode(&errorResponse); err != nil {
+			return statusCode, nil, nil, err
 		}
-		return response.StatusCode, nil, errorResponse, nil
+		return statusCode, nil, errorResponse, nil
 	}
 
 	var successResponse *TSuccess
-	if err := json.NewDecoder(response.Body).Decode(&successResponse); err != nil {
-		return http.StatusInternalServerError, nil, nil, err
+	if err := json.NewDecoder(bodyReader).Decode(&successResponse); err != nil {
+		return statusCode, nil, nil, err
 	}
-	return response.StatusCode, successResponse, nil, nil
+	return statusCode, successResponse, nil, nil
 }
